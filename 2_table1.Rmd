@@ -1,0 +1,988 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-12-08"
+---
+
+# Package loading
+
+```{r}
+rm(list = ls())
+
+if (!require("pacman")){
+  install.packages("pacman", repos='http://cran.us.r-project.org')
+}
+
+p_load(
+  "tidyverse", "here", "haven", "stringr", "dplyr", "labelled",
+  "gtsummary", "gt", "survey", "flextable", "officer"
+)
+
+```
+
+
+
+# Load the datasets
+
+```{r}
+source(here::here("0_paths_jl.R"))
+
+
+dt_tab1_age70 <- readRDS(here(
+  path_to_data,
+  "dt_tab1_age70.rds"
+))
+
+```
+
+
+
+
+# Table 1
+
+## Variable preparation
+```{r}
+#load function to factor variables
+source(here::here("function_jl.R"))
+
+#convert variable type to factor
+dt_tab1_age70_f <- dt_tab1_age70 %>%
+  recode_for_gtsum(dataset_name = "dt_tab1_age70") 
+
+#set label
+dt_tab1_age70_f<-dt_tab1_age70_f%>%
+  set_variable_labels(mage="Age in 2010",
+                      wave_enter="Enrollment Wave",
+                      ragender_f='Gender',
+                      race_ethnicity_f="Race and ethnicity",
+                      raedyrs='Years of education',
+                      education_degree_f="Educational attainment",
+                      pedu_cat_f='Parental years of education',
+                      bornsouth_f='Born in a Southern state',
+                      mstat_f= 'Marital status in 2010',
+                      shlt_f='Self-rated health in 2010',
+                      event_type_f='End of follow-up event',
+                      apoe_24_34_44_f='APOE',
+                      r10smokev_f='Ever smoker in 2010',
+                      r10diabe_f='Ever diabetes in 2010',
+                      r10stroke_f='Ever stroke in 2010')
+```
+
+
+
+## Unweighted langaweir table 1
+```{r}
+langaweir_table1_data<-dt_tab1_age70_f%>%
+  filter(algorithm=="lw")%>%
+  select(mage,wave_enter,ragender_f,race_ethnicity_f,raedyrs,education_degree_f,pedu_cat_f,bornsouth_f,mstat_f,shlt_f,dem2010_f,hhidpn,mwgtr,stratum,secu,dem_3lw2010_f,apoe_24_34_44_f,r10smokev_f,r10diabe_f,r10stroke_f)
+
+#Unweighted langaweir table 1
+tab1_langaweir_binary <- langaweir_table1_data %>% 
+  select(-hhidpn,-mwgtr, -stratum,-secu,-dem_3lw2010_f)%>%
+  tbl_summary(by = dem2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_langaweir_binary
+
+
+#three-category classification of cognitive status
+tab1_langaweir_three <- langaweir_table1_data %>% 
+  select(-hhidpn,-mwgtr, -stratum,-secu,-dem2010_f)%>%
+  tbl_summary(by = dem_3lw2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_langaweir_three
+
+```
+
+
+
+
+
+## Weighted langaweir table 1
+
+```{r}
+#The option options(survey.lonely.psu = "adjust") is set to handle situations where a stratum contains only one PSU
+
+options(survey.lonely.psu = "adjust")
+langaweir_table1_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = langaweir_table1_data,
+  nest = TRUE
+)
+
+
+tab1_langaweir_svy_binary <- langaweir_table1_svy %>%
+  tbl_svysummary(
+    by = dem2010_f,
+    include = -c(hhidpn,mwgtr, stratum,secu, dem_3lw2010_f),
+    missing = "ifany",
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_langaweir_svy_binary
+
+#three-category classification of cognitive status
+
+tab1_langaweir_svy_three <- langaweir_table1_svy %>%
+  tbl_svysummary(
+    by = dem_3lw2010_f,
+    include = -c(hhidpn,mwgtr, stratum,secu, dem2010_f),
+    missing = "ifany",
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_langaweir_svy_three
+```
+
+
+## Unweighted memimp table1
+
+
+```{r}
+memimp_table1_data<-dt_tab1_age70_f%>%
+  filter(algorithm=="wu")%>%
+  select(mage,wave_enter,ragender_f,race_ethnicity_f,raedyrs,education_degree_f,pedu_cat_f,bornsouth_f,mstat_f,shlt_f,dem2010_f,hhidpn,mwgtr,stratum,secu,apoe_24_34_44_f,r10smokev_f,r10diabe_f,r10stroke_f)
+
+tab1_memimp <- memimp_table1_data %>%
+  select(-hhidpn,-mwgtr, -stratum,-secu) %>% 
+  tbl_summary(by = dem2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_memimp
+```
+
+
+## Weighted memimp table1
+
+```{r}
+#The option options(survey.lonely.psu = "adjust") is set to handle situations where a stratum contains only one PSU
+table(memimp_table1_data$stratum)
+
+options(survey.lonely.psu = "adjust")
+
+memimp_table1_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = memimp_table1_data,
+  nest = TRUE
+)
+
+
+tab1_memimp_svy <- memimp_table1_svy %>%
+  tbl_svysummary(
+    by = dem2010_f,
+    include = -c(hhidpn,mwgtr, stratum,secu),
+    missing = "ifany",
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_memimp_svy
+```
+
+
+
+## Unweighted expert table1
+
+```{r}
+dp_table1_data<-dt_tab1_age70_f%>%
+  filter(algorithm=="expert")%>%
+  select(mage,wave_enter,ragender_f,race_ethnicity_f,raedyrs,education_degree_f,pedu_cat_f,bornsouth_f,mstat_f,shlt_f,dem2010_f,hhidpn,mwgtr,stratum,secu,apoe_24_34_44_f,r10smokev_f,r10diabe_f,r10stroke_f) 
+
+
+tab1_dp<-dp_table1_data%>% 
+  select(-hhidpn,-mwgtr,-stratum,-secu)%>% 
+  tbl_summary(by = dem2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_dp
+```
+
+
+
+## Weighted expert table 1
+
+```{r}
+dp_table1_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dp_table1_data,
+  nest = TRUE
+)
+
+tab1_dp_svy <- dp_table1_svy %>%
+  tbl_svysummary(
+    by = dem2010_f,
+    include = -c(hhidpn,mwgtr, stratum,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_dp_svy
+```
+
+
+
+
+## Unweighted hudomiet table 1
+```{r}
+hudomiet_table1_data<-dt_tab1_age70_f%>%
+  filter(algorithm=="hudomiet")%>%
+  select(mage,wave_enter,ragender_f,race_ethnicity_f,raedyrs,education_degree_f,pedu_cat_f,bornsouth_f,mstat_f,shlt_f,dem2010_f,hhidpn,mwgtr,secu,stratum,dem_3hudomiet2010_f,apoe_24_34_44_f,r10smokev_f,r10diabe_f,r10stroke_f) 
+
+tab1_hudomiet_binary <- hudomiet_table1_data %>%
+  select(-hhidpn,-mwgtr, -stratum,-dem_3hudomiet2010_f,-secu) %>% 
+  tbl_summary(by = dem2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_hudomiet_binary
+
+#three-category classification of cognitive status
+tab1_hudomiet_three <- hudomiet_table1_data %>%
+  select(-hhidpn,-mwgtr, -stratum,-dem2010_f,-secu) %>% 
+  tbl_summary(by = dem_3hudomiet2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_hudomiet_three
+```
+
+
+## Weighted hudomiet table1
+
+```{r}
+hudomiet_table1_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = hudomiet_table1_data,
+  nest = TRUE
+)
+
+tab1_hudomiet_svy_binary <- hudomiet_table1_svy %>%
+  tbl_svysummary(
+    by = dem2010_f,
+    include = -c(hhidpn,mwgtr, stratum,dem_3hudomiet2010_f,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_hudomiet_svy_binary
+
+#three-category classification of cognitive status
+tab1_hudomiet_svy_three <- hudomiet_table1_svy %>%
+  tbl_svysummary(
+    by = dem_3hudomiet2010_f,
+    include = -c(hhidpn,mwgtr, stratum,dem2010_f,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_hudomiet_svy_three
+```
+
+# Table 1 Baseline cognitive status (no dementia) with end-of-follow-up events.
+## unweighted langaweir_no_dem table 1
+
+```{r}
+langaweir_table1_no_dem <- dt_tab1_age70_f %>%
+  filter(algorithm == "lw", dem2010_f == "No dementia in 2010") %>%
+  select(mage, wave_enter, ragender_f, race_ethnicity_f, raedyrs,
+         education_degree_f, pedu_cat_f, bornsouth_f, mstat_f, shlt_f,
+         event_type_f, dem2010_f, hhidpn, mwgtr, stratum,secu, dem_3lw2010_f,apoe_24_34_44_f,r10smokev_f,r10diabe_f,r10stroke_f) %>%
+  mutate(across(c(dem2010_f, dem_3lw2010_f), droplevels))
+
+
+tab1_langaweir_no_dem_binary <- langaweir_table1_no_dem %>%
+  select(-hhidpn,-mwgtr, -stratum,-dem_3lw2010_f,-secu) %>% 
+  tbl_summary(by = dem2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+  
+tab1_langaweir_no_dem_binary
+
+
+#three-category classification of cognitive status
+tab1_langaweir_no_dem_three <- langaweir_table1_no_dem %>%
+  select(-hhidpn,-mwgtr, -stratum,-dem2010_f,-secu) %>% 
+  tbl_summary(by = dem_3lw2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+  
+tab1_langaweir_no_dem_three
+```
+
+## weighted langaweir_no_dem_table1
+```{r}
+langaweir_table1_svy_no_dem <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = langaweir_table1_no_dem,
+  nest = TRUE
+)
+
+tab1_langaweir_svy_no_dem_binary <- langaweir_table1_svy_no_dem %>%
+  tbl_svysummary(
+    by = dem2010_f,
+    include = -c(hhidpn,mwgtr, stratum,dem_3lw2010_f,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_langaweir_svy_no_dem_binary
+
+#three-category classification of cognitive status
+tab1_langaweir_svy_no_dem_three <- langaweir_table1_svy_no_dem %>%
+  tbl_svysummary(
+    by = dem_3lw2010_f,
+    include = -c(hhidpn,mwgtr, stratum,dem2010_f,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_langaweir_svy_no_dem_three
+```
+
+
+## unweighted memimp_no_dem table 1
+
+```{r}
+memimp_table1_no_dem<-dt_tab1_age70_f%>%
+  filter(algorithm=="wu", dem2010_f == "No dementia in 2010")%>%
+  select(mage,wave_enter,ragender_f,race_ethnicity_f,raedyrs,education_degree_f,pedu_cat_f,bornsouth_f,mstat_f,shlt_f,event_type_f,dem2010_f,hhidpn,mwgtr,stratum,secu,apoe_24_34_44_f,r10smokev_f,r10diabe_f,r10stroke_f)%>%
+  mutate(across(c(dem2010_f), droplevels))
+
+tab1_memimp_no_dem <- memimp_table1_no_dem %>%
+  select(-hhidpn,-mwgtr, -stratum,-secu) %>% 
+  tbl_summary(by = dem2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_memimp_no_dem 
+```
+
+## weighted memimp_table1_no_dem
+```{r}
+memimp_table1_svy_no_dem <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = memimp_table1_no_dem,
+  nest = TRUE
+)
+
+tab1_memimp_svy_no_dem <- memimp_table1_svy_no_dem %>%
+  tbl_svysummary(
+    by = dem2010_f,
+    include = -c(hhidpn,mwgtr, stratum,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_memimp_svy_no_dem
+```
+
+
+## unweighted expert_table1_no_dem 
+
+```{r}
+dp_table1_no_dem <-dt_tab1_age70_f%>%
+  filter(algorithm=="expert", dem2010_f == "No dementia in 2010")%>%
+  select(mage,wave_enter,ragender_f,race_ethnicity_f,raedyrs,education_degree_f,pedu_cat_f,bornsouth_f,mstat_f,shlt_f,event_type_f,dem2010_f,hhidpn,mwgtr,stratum,secu,apoe_24_34_44_f,r10smokev_f,r10diabe_f,r10stroke_f)%>%
+  mutate(across(c(dem2010_f), droplevels)) 
+
+tab1_dp_no_dem <- dp_table1_no_dem %>%
+  select(-hhidpn,-mwgtr, -stratum,-secu) %>% 
+  tbl_summary(by = dem2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_dp_no_dem
+```
+
+## weighted expert_table1_no_dem
+```{r}
+dp_table1_svy_no_dem <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dp_table1_no_dem,
+  nest = TRUE
+)
+
+tab1_dp_svy_no_dem <- dp_table1_svy_no_dem %>%
+  tbl_svysummary(
+    by = dem2010_f,
+    include = -c(hhidpn,mwgtr, stratum,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_dp_svy_no_dem
+```
+
+
+## unweighted hudomiet_table1_no_dem 
+```{r}
+hudomiet_table1_no_dem <- dt_tab1_age70_f %>%
+  filter(algorithm == "hudomiet", dem2010_f == "No dementia in 2010") %>%
+  select(mage, wave_enter, ragender_f, race_ethnicity_f, raedyrs,
+         education_degree_f, pedu_cat_f, bornsouth_f, mstat_f, shlt_f,
+         event_type_f, dem2010_f, hhidpn, mwgtr, stratum,secu, dem_3hudomiet2010_f,apoe_24_34_44_f,r10smokev_f,r10diabe_f,r10stroke_f) %>%
+  mutate(across(c(dem2010_f, dem_3hudomiet2010_f), droplevels))
+
+
+tab1_hudomiet_no_dem_binary <- hudomiet_table1_no_dem %>%
+  select(-hhidpn,-mwgtr, -stratum,-dem_3hudomiet2010_f,-secu) %>% 
+  tbl_summary(by = dem2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_hudomiet_no_dem_binary
+
+#three-category classification of cognitive status
+tab1_hudomiet_no_dem_three <- hudomiet_table1_no_dem %>%
+  select(-hhidpn,-mwgtr, -stratum,-dem2010_f,-secu) %>% 
+  tbl_summary(by = dem_3hudomiet2010_f,
+              missing = "ifany", 
+              missing_text="Missing",
+        type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns=label, indent=0) %>%
+  bold_labels()
+
+tab1_hudomiet_no_dem_three
+```
+
+## weighted hudomiet_table1_no_dem
+```{r}
+hudomiet_table1_svy_no_dem <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = hudomiet_table1_no_dem,
+  nest = TRUE
+)
+
+tab1_hudomiet_svy_no_dem_binary <- hudomiet_table1_svy_no_dem %>%
+  tbl_svysummary(
+    by = dem2010_f,
+    include = -c(hhidpn, mwgtr, stratum, dem_3hudomiet2010_f,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_hudomiet_svy_no_dem_binary
+
+tab1_hudomiet_svy_no_dem_three <- hudomiet_table1_svy_no_dem %>%
+  tbl_svysummary(
+    by = dem_3hudomiet2010_f,
+    include = -c(hhidpn, mwgtr, stratum, dem2010_f,secu),
+    missing = "ifany", 
+    missing_text = "Missing",
+    type = list(
+      all_continuous() ~ "continuous",
+      all_categorical() ~ "categorical"
+    ),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous() ~ 1,
+      all_categorical() ~ 0
+    )
+  ) %>%
+  add_stat_label(location = "row") %>%
+  modify_column_indent(columns = label, indent = 0) %>%
+  bold_labels()
+
+tab1_hudomiet_svy_no_dem_three
+```
+
+## combine table 1s and save results
+```{r}
+#Combine the unweighted Table 1 results from all algorithms
+merged_table_binary <- tbl_merge(
+  tbls = list(tab1_langaweir_binary, tab1_hudomiet_binary, tab1_dp, tab1_memimp),
+  tab_spanner = c("**Langa-Weir**", "**Hudomiet**", "**Expert Model**", "**Wu**")
+)
+merged_table_binary
+
+# gtsave(
+#   merged_table_binary %>% as_gt,
+#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_binary_apoe.html")
+
+
+merged_table_three <- tbl_merge(
+  tbls = list(tab1_langaweir_three, tab1_hudomiet_three, tab1_dp, tab1_memimp),
+  tab_spanner = c("**Langa-Weir**", "**Hudomiet**", "**Expert Model**", "**Wu**")
+)
+merged_table_three
+
+# gtsave(
+#   merged_table_three %>% as_gt,
+#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_three_apoe.html")
+
+#-------
+
+#Combine the weighted Table 1 results from all algorithms
+merged_table_svy_binary <- tbl_merge(
+  tbls = list(tab1_langaweir_svy_binary, tab1_hudomiet_svy_binary, tab1_dp_svy, tab1_memimp_svy),
+  tab_spanner = c("**Langa-Weir**", "**Hudomiet**", "**Expert Model**", "**Wu**")
+)
+
+merged_table_svy_binary
+
+
+# gtsave(
+#   merged_table_svy_binary %>% as_gt,
+#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_svy_binary_apoe.html")
+
+
+merged_table_svy_three <- tbl_merge(
+  tbls = list(tab1_langaweir_svy_three, tab1_hudomiet_svy_three, tab1_dp_svy, tab1_memimp_svy),
+  tab_spanner = c("**Langa-Weir**", "**Hudomiet**", "**Expert Model**", "**Wu**")
+)
+
+merged_table_svy_three
+
+
+# gtsave(
+#   merged_table_svy_three %>% as_gt,
+#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_svy_three_apoe.html")
+
+#------
+
+#Combine the unweighted no dementia Table 1 results from all algorithms
+merged_table_no_dem_binary <- tbl_merge(
+  tbls = list(tab1_langaweir_no_dem_binary, tab1_hudomiet_no_dem_binary, tab1_dp_no_dem, tab1_memimp_no_dem),
+  tab_spanner = c("**Langa-Weir**", "**Hudomiet**", "**Expert Model**", "**Wu**")
+)
+
+merged_table_no_dem_binary
+
+# gtsave(
+#   merged_table_no_dem_binary %>% as_gt,
+#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_no_dem_binary_apoe.html")
+
+
+merged_table_no_dem_three <- tbl_merge(
+  tbls = list(tab1_langaweir_no_dem_three, tab1_hudomiet_no_dem_three, tab1_dp_no_dem, tab1_memimp_no_dem),
+  tab_spanner = c("**Langa-Weir**", "**Hudomiet**", "**Expert Model**", "**Wu**")
+)
+
+merged_table_no_dem_three
+
+# gtsave(
+#   merged_table_no_dem_three %>% as_gt,
+#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_no_dem_three_apoe.html")
+
+#-------
+
+#Combine the weighted no dementia Table 1 results from all algorithms
+merged_table_svy_no_dem_binary <- tbl_merge(
+  tbls = list(tab1_langaweir_svy_no_dem_binary, tab1_hudomiet_svy_no_dem_binary, tab1_dp_svy_no_dem, tab1_memimp_svy_no_dem),
+  tab_spanner = c("**Langa-Weir**", "**Hudomiet**", "**Expert Model**", "**Wu**")
+)
+
+merged_table_svy_no_dem_binary
+
+# gtsave(
+#   merged_table_svy_no_dem_binary %>% as_gt,
+#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_svy_no_dem_binary_apoe.html")
+
+
+merged_table_svy_no_dem_three <- tbl_merge(
+  tbls = list(tab1_langaweir_svy_no_dem_three, tab1_hudomiet_svy_no_dem_three, tab1_dp_svy_no_dem, tab1_memimp_svy_no_dem),
+  tab_spanner = c("**Langa-Weir**", "**Hudomiet**", "**Expert Model**", "**Wu**")
+)
+
+merged_table_svy_no_dem_three
+
+# gtsave(
+#   merged_table_svy_no_dem_three %>% as_gt,
+#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_svy_no_dem_three_apoe.html")
+```
+
+
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

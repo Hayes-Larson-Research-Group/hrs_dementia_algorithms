@@ -1,0 +1,500 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-03-17"
+---
+
+```{r}
+library(tidyverse)
+library(ggforestplot)
+```
+
+# load dataset
+```{r}
+# use weighted result to create plot
+weighted_main_result <- read.csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_weighted_12_12.csv")
+
+weighted_apoe_result <- read_csv(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_apoe.csv")
+```
+
+
+#reshape the data format
+```{r}
+# Filter models
+weighted_main_result_filter <- weighted_main_result %>%
+  filter(str_detect(Adjustment.variables, "Age"))
+
+#transfer to long format, split columns and rename columns
+df_long <- weighted_main_result_filter %>%
+  pivot_longer(
+    cols = c(Langa, Wu, Hudomiet, Expert),
+    names_to = "source",
+    values_to = "value"
+  ) %>%
+  mutate(
+    hr  = as.numeric(str_extract(value, "^[0-9.]+")),
+    lcl = as.numeric(str_extract(value, "(?<=\\()[0-9.]+")),
+    ucl = as.numeric(str_extract(value, "(?<=–)[0-9.]+"))
+  ) %>%
+  rename(name = Risk.factor) %>%
+  mutate(
+    name = recode(name,
+      "Female" = "Female (ref: Male)",
+      "< HS" = "< High School (ref: ≥ High School)",
+      "NH Black" = "NH Black (ref: NH White)",
+      "Hispanic" = "Hispanic (ref: NH White)",
+      "NH Other" = "NH Other (ref: NH White)",
+      "Diabetes history in 2010" = "Diabetes (ref: No)",
+      "Stroke history in 2010" = "Stroke (ref: No)",
+      "Smoker history in 2010" = "Ever smoker (ref: Never)"
+    )
+  ) %>%
+  select(-Adjustment.variables, -value)%>%
+  mutate(
+    source = recode(source,
+      "Langa"   = "Langa-Weir"
+    )
+  )
+```
+
+
+```{r}
+#reshape result from models with apoe
+weighted_apoe_result_filter<-weighted_apoe_result%>%
+  filter(weight_type=="weighted" & term=="apoe_24_34_44_f24/34/44" & model =="apoe_age")%>%
+  mutate(name = "APOE-ε4 carrier (ref: non-carrier)")%>%
+  select(-weight_type,-p_value)%>%
+  rename(ucl = upper_95, lcl = lower_95)%>%
+  rename(source=algorithm,hr=HR)%>%
+  select(-model,-term)%>%
+  mutate(
+    hr  = round(hr, 2),
+    lcl = round(lcl, 2),
+    ucl = round(ucl, 2)
+  )%>%
+  mutate(
+    source = recode(source,
+      "langa"   = "Langa-Weir",
+      "memimp"  = "Wu",
+      "hudomiet"= "Hudomiet",
+      "dp"      = "Expert"
+    )
+  )
+```
+
+
+```{r}
+df_hr<-bind_rows(df_long,weighted_apoe_result_filter)
+```
+
+
+```{r}
+# write.csv(
+#   df_hr,
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/df_hr_forest.csv",
+#   row.names = FALSE
+# )
+```
+
+
+# plot
+
+```{r}
+# ---------- 2) Prep for ggforestplot (log scale inputs) ------------------
+z <- qnorm(0.975)
+pal4 <- c("Langa-Weir"="#648FFF","Hudomiet"="#DC267F","Expert"="#E69F00","Wu"="#00A08A")
+legend_order <- c("Langa-Weir", "Hudomiet", "Expert", "Wu")
+variable_order <- c(
+  "NH Black (ref: NH White)",
+  "Hispanic (ref: NH White)",
+  "NH Other (ref: NH White)",
+  "Female (ref: Male)",
+  "< High School (ref: ≥ High School)",
+  "Diabetes (ref: No)",
+  "Stroke (ref: No)",
+  "Ever smoker (ref: Never)",
+  "APOE-ε4 carrier (ref: non-carrier)"
+)
+
+df_plot_clean <- df_hr %>%
+  drop_na(hr, lcl, ucl) %>%
+  mutate(
+    name = factor(name, levels = rev(variable_order)),
+    source = factor(source, levels = rev(legend_order))
+  )
+
+pos <- position_dodge(width = 0.6)
+
+```
+
+
+
+```{r}
+n_y <- length(levels(df_plot_clean$name))
+n_y 
+
+shades <- data.frame(
+  ymin = seq(0.5, n_y - 0.5, by = 2),
+  ymax = seq(1.5, n_y + 0.5, by = 2),
+  xmin = 0,
+  xmax = Inf
+)
+```
+
+
+
+```{r}
+pos <- position_dodge(width = 0.6)
+
+p_hr <- ggplot(df_plot_clean, aes(x = hr, y = name, color = source, shape = source)) +
+  geom_rect(
+    data = shades,
+    inherit.aes = FALSE,
+    aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+    fill = "grey90",
+    alpha = 0.5
+  ) +
+  geom_errorbarh(
+    aes(xmin = lcl, xmax = ucl),
+    position = pos,
+    height = 0.3,
+    size = 1.0
+  ) +
+  geom_point(position = pos, size = 4, stroke = 1.2) +
+  geom_vline(xintercept = 1, colour = "black") +
+  scale_x_log10(
+    breaks = c(0.5, 0.75, 1, 1.25, 1.5, 2, 3),
+    labels = scales::number_format(accuracy = 0.01)
+  ) +
+  scale_color_manual(values = pal4, breaks = legend_order) +
+  scale_shape_manual(values = c(16, 17, 15, 18), breaks = legend_order) +
+  labs(x = "Hazard ratio (95% CI)", y = NULL, color = NULL, shape = NULL) +
+  theme_bw() +
+  theme(
+    axis.text.y  = element_text(size = 18, face = "bold"),
+    axis.text.x  = element_text(size = 14),
+    axis.title.x = element_text(size = 20, face = "bold"),
+    legend.position = "bottom",
+    legend.text  = element_text(size = 16),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_blank()
+  )
+
+p_hr
+```
+
+
+
+```{r}
+# ggsave(
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Manuscript/figures for manuscript/figure 3 forest_hr_main_apoe.pdf",
+#   p_hr,
+#   width = 12,
+#   height = 12
+# )
+```
+
+
+#sensitivity analysis(drop missing apoe for all models)
+```{r}
+weighted_result_s <- read_csv(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_weighted_3_16_apoe.csv"
+)
+```
+
+
+
+#reshape the data format
+```{r}
+# Filter models
+weighted_main_result_filter_s <- weighted_result_s %>%
+  filter(str_detect(`Adjustment variables`, "Age"))
+
+#transfer to long format, split columns and rename columns
+df_long_s <- weighted_main_result_filter_s %>%
+  pivot_longer(
+    cols = c(Langa, Wu, Hudomiet, Expert),
+    names_to = "source",
+    values_to = "value"
+  ) %>%
+  mutate(
+    hr  = as.numeric(str_extract(value, "^[0-9.]+")),
+    lcl = as.numeric(str_extract(value, "(?<=\\()[0-9.]+")),
+    ucl = as.numeric(str_extract(value, "(?<=–)[0-9.]+"))
+  ) %>%
+  rename(name = "Risk factor") %>%
+  mutate(
+    name = recode(name,
+      "Female" = "Female (ref: Male)",
+      "< HS" = "< High School (ref: ≥ High School)",
+      "NH Black" = "NH Black (ref: NH White)",
+      "Hispanic" = "Hispanic (ref: NH White)",
+      "NH Other" = "NH Other (ref: NH White)",
+      "Diabetes history in 2010" = "Diabetes (ref: No)",
+      "Stroke history in 2010" = "Stroke (ref: No)",
+      "Smoker history in 2010" = "Ever smoker (ref: Never)"
+    )
+  ) %>%
+  select(-`Adjustment variables`, -value)%>%
+  mutate(
+    source = recode(source,
+      "Langa"   = "Langa-Weir"
+    )
+  )
+```
+
+
+```{r}
+df_hr_s<-bind_rows(df_long_s,weighted_apoe_result_filter)
+```
+
+
+```{r}
+# write.csv(
+#   df_hr_s,
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/df_hr_forest_sensitivity.csv",
+#   row.names = FALSE
+# )
+```
+
+
+
+# model with apoe
+
+```{r}
+cox_results_apoe <- read_csv(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/result_table_stratified_apoe_3_19.csv"
+)
+
+result_table_stratified_weighted <- read_csv(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/result_table_stratified_weighted_12_12.csv"
+)
+```
+
+```{r}
+names(cox_results_apoe)
+```
+
+
+
+```{r}
+cox_results_apoe_filter<-cox_results_apoe%>%
+  filter(weight_type=="weighted" & term=="apoe_24_34_44_f24/34/44" & model =="apoe_age")%>%
+  mutate(name = "APOE-ε4 carrier (ref: Non-carrier)")%>%
+  select(-weight_type,-p_value)%>%
+  rename(ucl = upper_95, lcl = lower_95)%>%
+  rename(source=algorithm,hr=HR)%>%
+  select(-model,-term)%>%
+  mutate(
+    hr  = round(hr, 2),
+    lcl = round(lcl, 2),
+    ucl = round(ucl, 2)
+  )%>%
+  mutate(
+    source = recode(source,
+      "langa"   = "Langa-Weir",
+      "memimp"  = "Wu",
+      "hudomiet"= "Hudomiet",
+      "dp"      = "Expert"
+    )
+  )%>%
+  rename(race=race_strata)
+
+```
+
+
+```{r}
+result_table_stratified_weighted_filter <- result_table_stratified_weighted %>%
+  filter(
+    `Adjustment variables` != "--"
+  )
+
+#transfer to long format, split columns and rename columns
+df_stratified_weighted_long <- result_table_stratified_weighted_filter %>%
+  pivot_longer(
+    cols = c(Langa, Wu, Hudomiet, Expert),
+    names_to = "source",
+    values_to = "value"
+  ) %>%
+  mutate(
+    hr  = as.numeric(str_extract(value, "^[0-9.]+")),
+    lcl = as.numeric(str_extract(value, "(?<=\\()[0-9.]+")),
+    ucl = as.numeric(str_extract(value, "(?<=–)[0-9.]+"))
+  ) %>%
+  rename(name = "Risk factor") %>%
+  mutate(
+    name = recode(name,
+      "Female" = "Female (ref: Male)",
+      "< HS" = "< High school (ref: ≥ High school)",
+      "Diabetes history in 2010" = "Diabetes (ref: No)",
+      "Stroke history in 2010" = "Stroke (ref: No)",
+      "Smoker history in 2010" = "Ever smoker (ref: Never)"
+    )
+  ) %>%
+  select(-`Adjustment variables`, -value)%>%
+  mutate(
+    source = recode(source,
+      "Langa"   = "Langa-Weir"
+    )
+  )
+```
+
+
+```{r}
+df_stratified_all<-bind_rows(df_stratified_weighted_long,cox_results_apoe_filter)
+```
+
+
+```{r}
+# write.csv(
+#   df_stratified_all,
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/df_stratified_all.csv",
+#   row.names = FALSE
+# )
+```
+
+
+
+
+```{r}
+z <- qnorm(0.975)
+
+pal4 <- c(
+  "Langa-Weir" = "#648FFF",
+  "Hudomiet"   = "#DC267F",
+  "Expert"     = "#E69F00",
+  "Wu"         = "#00A08A"
+)
+
+# ---------- 1) Data prep ----------
+df_plot_s <- df_stratified_all %>%
+  drop_na(hr, lcl, ucl) %>%
+  mutate(
+    estimate = log(hr),
+    se       = (log(ucl) - log(lcl)) / (2 * z),
+
+    source = factor(
+      source,
+      levels = c("Langa-Weir", "Hudomiet", "Expert", "Wu")
+    ),
+
+    race = factor(
+      race,
+      levels = c("NH White", "NH Black", "Hispanic", "NH Other")
+    ),
+
+    name = factor(
+      name,
+      levels = c(
+        "APOE-ε4 carrier (ref: Non-carrier)",
+        "Ever smoker (ref: Never)",
+        "Stroke (ref: No)",
+        "Diabetes (ref: No)",
+        "< High school (ref: ≥ High school)",
+        "Female (ref: Male)"
+      )
+    )
+  )
+
+# ---------- 2) Truncation on HR scale ----------
+lower_cut <- 0.15
+upper_cut <- 30
+
+df_plot_s2 <- df_plot_s %>%
+  mutate(
+    lcl_plot    = pmax(lcl, lower_cut),
+    ucl_plot    = pmin(ucl, upper_cut),
+    left_trunc  = lcl < lower_cut,
+    right_trunc = ucl > upper_cut
+  )
+
+```
+
+
+
+
+```{r}
+table(df_plot_s2$left_trunc)
+table(df_plot_s2$right_trunc)
+```
+
+
+
+
+```{r}
+
+# ---------- 4) Forest plot faceted by race ----------
+pos <- position_dodge(width = 0.7, reverse = TRUE)
+
+p_hr_s <- ggplot(
+  df_plot_s2,
+  aes(x = hr, y = name, colour = source, shape = source)
+) +
+  geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") +
+
+  geom_errorbarh(
+    aes(xmin = lcl_plot, xmax = ucl),
+    position = pos,
+    height = 0.25,
+    size = 1.2
+  ) +
+
+  geom_point(
+    position = pos,
+    size = 2,
+    stroke = 1.2
+  ) +
+# geom_text(
+#   data = df_plot_s2 %>%
+#     filter(left_trunc, source %in% c("Hudomiet", "Wu")),
+#   aes(
+#     x = lcl_plot * 1.1,
+#     y = name,
+#     label = "←",
+#     colour = source,
+#     vjust = ifelse(source == "Hudomiet", 1.0, 0.6)  
+#   ),
+#   position = pos,
+#   hjust = 1,
+#   size = 6,
+#   show.legend = FALSE
+# )+
+
+  facet_wrap(~ race, ncol = 2) +
+
+  scale_x_log10(
+    breaks = c(0.5, 1, 2, 5, 10, 20),
+    labels = c("0.5", "1", "2", "5", "10","20")
+  ) +
+
+  scale_color_manual(values = pal4, name = NULL) +
+  scale_shape_manual(values = c(16, 17, 15, 18), name = NULL) +
+
+  labs(
+    x = "Hazard ratio (95% CI)",
+    y = NULL
+  ) +
+
+  theme_bw() +
+  theme(
+    legend.position  = "bottom",
+    axis.text        = element_text(size = 20, face = "bold"),
+    axis.title       = element_text(size = 32, face = "bold"),
+    legend.text      = element_text(size = 20),
+    legend.title     = element_text(size = 20),
+    plot.title       = element_text(size = 16, face = "bold", hjust = 0.5),
+    strip.text       = element_text(size = 16, face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+p_hr_s
+```
+
+
+```{r}
+# ggsave("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/figure s3 hr stratified.png",
+#        p_hr_s, width = 13, height = 10, dpi = 400)
+```
+
+

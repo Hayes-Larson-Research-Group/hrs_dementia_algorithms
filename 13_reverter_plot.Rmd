@@ -1,0 +1,554 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-04-30"
+---
+
+# Package loading
+
+```{r}
+rm(list = ls())
+
+if (!require("pacman")){
+  install.packages("pacman", repos = "http://cran.us.r-project.org")
+}
+
+p_load(
+  "tidyverse", "here", "haven", "stringr", "dplyr", "labelled",
+  "purrr", "readr", "gtsummary", "gt","survey", "boot","survival","TraMineR"
+)
+```
+
+
+# Load the datasets
+
+```{r}
+source(here::here("0_paths_jl.R"))
+
+dt_analysis_age70 <- readRDS(here(
+  path_to_data,
+  "dt_analysis_age70.rds"
+))
+
+dt_analysis_age70_3cat <- readRDS(here(
+  path_to_data,
+  "dt_analysis_age70_3cat.rds"
+))
+
+
+source(here::here("function_jl.R"))
+#Split the data by each algorithm
+#convert variable type to factor
+#apply the factor function after stratifying by algorithm, because of the race_ethnicity variable
+dt_analysis_age70_langa <-dt_analysis_age70_3cat%>%
+  filter(algorithm=="lw")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_hudomiet <-dt_analysis_age70_3cat%>%
+  filter(algorithm=="hudomiet")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_dp <-dt_analysis_age70%>%
+  filter(algorithm=="expert")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_memimp <-dt_analysis_age70%>%
+  filter(algorithm=="wu")%>%
+  recode_for_gtsum()
+```
+
+
+```{r}
+dt_analysis_age70_langa_dementia <- dt_analysis_age70_langa %>%
+  filter(event_dementia == 1)
+
+dt_analysis_age70_hudomiet_dementia <- dt_analysis_age70_hudomiet %>%
+  filter(event_dementia == 1)
+
+dt_analysis_age70_dp_dementia <- dt_analysis_age70_dp %>%
+  filter(event_dementia == 1)
+
+dt_analysis_age70_memimp_dementia <- dt_analysis_age70_memimp %>%
+  filter(event_dementia == 1)
+```
+
+
+
+# seq plot
+```{r}
+dem_cols <- c(
+  "dem2010", "dem2012", "dem2014",
+  "dem2016", "dem2018", "dem2020"
+)
+
+dem_3lw_cols <- c(
+  "dem_3lw2010", "dem_3lw2012", "dem_3lw2014",
+  "dem_3lw2016", "dem_3lw2018", "dem_3lw2020"
+)
+
+dem_3hudomiet_cols <- c(
+  "dem_3hudomiet2010", "dem_3hudomiet2012",
+  "dem_3hudomiet2014", "dem_3hudomiet2016"
+)
+
+dt_analysis_age70_langa <- dt_analysis_age70_langa %>%
+  select(
+    hhidpn,
+    algorithm,
+    all_of(dem_3lw_cols),
+    everything()
+  )
+
+dt_analysis_age70_hudomiet <- dt_analysis_age70_hudomiet %>%
+  select(
+    hhidpn,
+    algorithm,
+    all_of(dem_3hudomiet_cols),
+    everything()
+  )
+```
+
+
+
+```{r}
+# event dementia n
+dt_analysis_age70_langa %>%
+  filter(event_dementia == 1)%>%
+  nrow()
+
+dt_analysis_age70_hudomiet %>%
+  filter(event_dementia == 1)%>%
+  nrow()
+
+dt_analysis_age70_dp %>%
+  filter(event_dementia == 1)%>%
+  nrow()
+
+dt_analysis_age70_memimp %>%
+  filter(event_dementia == 1)%>%
+  nrow()
+```
+
+
+```{r}
+# Function to flag reverters based on a set of columns and reversion pattern
+flag_reverters <- function(df, cols, from_val, to_val) {
+  df %>%
+    select(hhidpn, all_of(cols)) %>%
+    rowwise() %>%
+    mutate(has_revert = {
+      vals <- c_across(all_of(cols))
+      any(sapply(which(vals == from_val), function(i) any(vals[(i+1):length(vals)] == to_val, na.rm = TRUE)))
+    }) %>%
+    ungroup() %>%
+    filter(has_revert) %>%
+    pull(hhidpn)
+}
+```
+
+
+```{r}
+# ---- Langa-Weir: dementia subset + reverters ----
+# Define reverters as anyone with dementia→normal, dementia→CIND, or CIND→normal
+langa_reverter_ids <- unique(c(
+  flag_reverters(dt_analysis_age70_langa_dementia, dem_3lw_cols, 3, 1), # dem -> normal
+  flag_reverters(dt_analysis_age70_langa_dementia, dem_3lw_cols, 3, 2) # dem -> CIND
+))
+
+dt_langa_dem_revert <- dt_analysis_age70_langa_dementia %>%
+  filter(hhidpn %in% langa_reverter_ids)
+
+#304
+```
+
+
+```{r}
+# Dementia -> Normal
+ids_dem_to_normal <- flag_reverters(dt_analysis_age70_langa_dementia, dem_3lw_cols, 3, 1)
+length(ids_dem_to_normal)
+
+# Dementia -> CIND
+ids_dem_to_cind <- flag_reverters(dt_analysis_age70_langa_dementia, dem_3lw_cols, 3, 2)
+length(ids_dem_to_cind)
+
+length(unique(c(ids_dem_to_normal, ids_dem_to_cind)))
+```
+
+
+```{r}
+# Langa 3-cat seq plot (dementia + reverters)
+cog_seq_langa <- dt_langa_dem_revert %>%
+  select(hhidpn, all_of(dem_3lw_cols)) %>%
+  mutate(across(starts_with("dem"), ~ case_when(
+    . == 1 ~ "Normal",
+    . == 2 ~ "CIND",
+    . == 3 ~ "Dementia",
+    TRUE   ~ "Missing"
+  )))
+
+seq_data_langa <- cog_seq_langa %>% select(-hhidpn)
+colnames(seq_data_langa) <- c("2010", "2012", "2014", "2016", "2018", "2020")
+
+seq_def_langa <- seqdef(seq_data_langa)
+
+colors <- c(
+  "Normal"   = "lightyellow",
+  "CIND"     = "#FFD580",
+  "Dementia" = "#FFA07A",
+  "Missing"  = "gray"
+)
+seq_def_langa <- seqdef(seq_data_langa)
+
+colors <- c(
+  "Normal"   = "lightyellow",
+  "CIND"     = "#FFD580",
+  "Dementia" = "#FFA07A",
+  "Missing"  = "gray"
+)
+state_order  <- attr(seq_def_langa, "alphabet")
+cpal_ordered <- colors[state_order] 
+
+png(file_path, width = 10, height = 7, units = "in", res = 300)
+
+
+layout(matrix(c(1, 2), nrow = 1), widths = c(4, 1))
+
+par(cex.main = 1.1, cex.lab = 1, cex.axis = 1)
+seqIplot(seq_def_langa,
+         sortv = "from.start",
+         with.legend = FALSE,
+         ylab = "Individuals (N = 304)",
+         xlab = "Year",
+         las = 1,
+         yaxt = "n",
+         cpal = cpal_ordered)
+
+
+par(mar = c(0, 0, 0, 0))
+plot.new()
+legend_order <- c("Normal", "CIND", "Dementia", "Missing")
+legend("center",
+       legend = legend_order,
+       fill   = colors[legend_order],
+       bty    = "o",         
+       box.lwd = 1,           
+       bg = "white")          
+
+dev.off()
+```
+
+
+```{r}
+# Langa 2-cat seq plot (dementia + reverters)
+# For 2-cat, "reverter" only means dementia -> no dementia
+langa_reverter_ids_2cat <- flag_reverters(
+  dt_analysis_age70_langa_dementia, dem_cols, 1, 0
+)
+dt_langa_dem_revert_2cat <- dt_analysis_age70_langa_dementia %>%
+  filter(hhidpn %in% langa_reverter_ids_2cat)
+
+cog_seq_langa <- dt_langa_dem_revert_2cat %>%
+  select(hhidpn, all_of(dem_cols)) %>%
+  mutate(across(starts_with("dem"), ~ case_when(
+    . == 0 ~ "No dementia",
+    . == 1 ~ "Dementia",
+    TRUE   ~ "Missing"
+  )))
+seq_data_langa <- cog_seq_langa %>% select(-hhidpn)
+colnames(seq_data_langa) <- c("2010", "2012", "2014", "2016", "2018", "2020")
+
+seq_def_langa <- seqdef(seq_data_langa) 
+
+colors <- c(
+  "No dementia" = "#F0E68C",
+  "Dementia"    = "#FFA07A",
+  "Missing"     = "gray"
+)
+state_order  <- attr(seq_def_langa, "alphabet")
+cpal_ordered <- colors[state_order]       
+
+file_path <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/seqIplot_langa_2cat.png"
+png(file_path, width = 10, height = 7, units = "in", res = 300)
+
+
+layout(matrix(c(1, 2), nrow = 1), widths = c(4, 1))
+
+par(cex.main = 1.1, cex.lab = 1, cex.axis = 1)
+seqIplot(seq_def_langa,
+         sortv = "from.start",
+         with.legend = FALSE,
+         ylab = "Individuals (N = 304)",
+         xlab = "Year",
+         las = 1,
+         yaxt = "n",
+         cpal = cpal_ordered)
+
+
+par(mar = c(0, 0, 0, 0))
+plot.new()
+legend_order <- c("No dementia", "Dementia", "Missing")
+legend("center",
+       legend = legend_order,
+       fill   = colors[legend_order],
+       bty    = "o",
+       box.lwd = 1,
+       bg = "white")
+
+dev.off()
+
+```
+
+
+
+
+```{r}
+# ---- Expert: dementia subset + reverters (2-cat only) ----
+
+expert_reverter_ids <- flag_reverters(
+  dt_analysis_age70_dp_dementia, dem_cols, 1, 0
+)
+dt_dp_dem_revert <- dt_analysis_age70_dp_dementia %>%
+  filter(hhidpn %in% expert_reverter_ids)
+
+cog_seq_dp <- dt_dp_dem_revert %>%
+  select(hhidpn, all_of(dem_cols)) %>%
+  mutate(across(starts_with("dem"), ~ case_when(
+    . == 0 ~ "No dementia",
+    . == 1 ~ "Dementia",
+    TRUE   ~ "Missing"
+  )))
+seq_data_dp <- cog_seq_dp %>% select(-hhidpn)
+colnames(seq_data_dp) <- c("2010", "2012", "2014", "2016", "2018", "2020")
+
+seq_def_dp <- seqdef(seq_data_dp)  
+
+colors <- c(
+  "No dementia" = "#F0E68C",
+  "Dementia"    = "#FFA07A",
+  "Missing"     = "gray"
+)
+state_order  <- attr(seq_def_dp, "alphabet")
+cpal_ordered <- colors[state_order]     
+
+file_path <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/seqIplot_dp.png"
+png(file_path, width = 10, height = 7, units = "in", res = 300)
+
+
+layout(matrix(c(1, 2), nrow = 1), widths = c(4, 1))
+
+par(cex.main = 1.1, cex.lab = 1, cex.axis = 1)
+seqIplot(seq_def_dp,
+         sortv = "from.start",
+         with.legend = FALSE,
+         ylab = "Individuals (N = 469)",
+         xlab = "Year",
+         las = 1,
+         yaxt = "n",
+         cpal = cpal_ordered)
+
+
+par(mar = c(0, 0, 0, 0))
+plot.new()
+legend_order <- c("No dementia", "Dementia", "Missing")
+legend("center",
+       legend = legend_order,
+       fill   = colors[legend_order],
+       bty    = "o",
+       box.lwd = 1,
+       bg = "white")
+
+dev.off()
+```
+
+
+```{r}
+# ---- Hudomiet: dementia subset + reverters ----
+hudomiet_cols <- c(
+  "dem_3hudomiet2010", "dem_3hudomiet2012",
+  "dem_3hudomiet2014", "dem_3hudomiet2016"
+)
+hudomiet_reverter_ids <- unique(c(
+  flag_reverters(dt_analysis_age70_hudomiet_dementia, hudomiet_cols, 3, 1),
+  flag_reverters(dt_analysis_age70_hudomiet_dementia, hudomiet_cols, 3, 2)
+))
+ids_hud_dem_to_normal <- flag_reverters(dt_analysis_age70_hudomiet_dementia, hudomiet_cols, 3, 1)
+length(ids_hud_dem_to_normal)
+ids_hud_dem_to_cind <- flag_reverters(dt_analysis_age70_hudomiet_dementia, hudomiet_cols, 3, 2)
+length(ids_hud_dem_to_cind)
+length(unique(c(ids_hud_dem_to_normal, ids_hud_dem_to_cind)))
+
+dt_hudomiet_dem_revert <- dt_analysis_age70_hudomiet_dementia %>%
+  filter(hhidpn %in% hudomiet_reverter_ids)
+
+# 3-cat
+cog_seq_hudomiet <- dt_hudomiet_dem_revert %>%
+  select(hhidpn, all_of(hudomiet_cols)) %>%
+  mutate(across(starts_with("dem"), ~ case_when(
+    . == 1 ~ "Normal",
+    . == 2 ~ "CIND",
+    . == 3 ~ "Dementia",
+    TRUE   ~ "Missing"
+  )))
+seq_data_hudomiet <- cog_seq_hudomiet %>% select(-hhidpn)
+colnames(seq_data_hudomiet) <- c("2010", "2012", "2014", "2016")
+
+colors <- c(
+  "Normal"   = "lightyellow",
+  "CIND"     = "#FFD580",
+  "Dementia" = "#FFA07A",
+  "Missing"  = "gray"
+)
+
+
+seq_def_hudomiet <- seqdef(seq_data_hudomiet[nrow(seq_data_hudomiet):1, ])
+state_order  <- attr(seq_def_hudomiet, "alphabet")
+cpal_ordered <- colors[state_order]     
+
+file_path <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/seqIplot_hu_3cat.png"
+png(file_path, width = 10, height = 7, units = "in", res = 300)
+
+
+layout(matrix(c(1, 2), nrow = 1), widths = c(4, 1))
+
+par(cex.main = 1.1, cex.lab = 1, cex.axis = 1)
+seqIplot(seq_def_hudomiet,
+         sortv = NULL,
+         with.legend = FALSE,
+         ylab = "Individuals (N = 4)",
+         xlab = "Year",
+         las = 1,
+         yaxt = "n",
+         cpal = cpal_ordered)
+
+
+par(mar = c(0, 0, 0, 0))
+plot.new()
+legend_order <- c("Normal", "CIND", "Dementia", "Missing")
+legend("center",
+       legend = legend_order,
+       fill   = colors[legend_order],
+       bty    = "o",
+       box.lwd = 1,
+       bg = "white")
+
+dev.off()
+```
+
+
+```{r}
+# Hudomiet 2-cat
+hudomiet_reverter_ids_2cat <- flag_reverters(
+  dt_analysis_age70_hudomiet_dementia, c("dem2010","dem2012","dem2014","dem2016"), 1, 0
+)
+dt_hudomiet_dem_revert_2cat <- dt_analysis_age70_hudomiet_dementia %>%
+  filter(hhidpn %in% hudomiet_reverter_ids_2cat)
+
+cog_seq_hudomiet <- dt_hudomiet_dem_revert_2cat %>%
+  select(hhidpn, dem2010, dem2012, dem2014, dem2016) %>%
+  mutate(across(starts_with("dem"), ~ case_when(
+    . == 0 ~ "No dementia",
+    . == 1 ~ "Dementia",
+    TRUE   ~ "Missing"
+  )))
+seq_data_hudomiet <- cog_seq_hudomiet %>% select(-hhidpn)
+colnames(seq_data_hudomiet) <- c("2010", "2012", "2014", "2016")
+
+seq_def_hudomiet <- seqdef(seq_data_hudomiet)
+
+colors <- c(
+  "No dementia" = "#F0E68C",
+  "Dementia"    = "#FFA07A",
+  "Missing"     = "gray"
+)
+state_order  <- attr(seq_def_hudomiet, "alphabet")
+cpal_ordered <- colors[state_order]       
+
+file_path <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/seqIplot_hu_2cat.png"
+png(file_path, width = 10, height = 7, units = "in", res = 300)
+
+
+layout(matrix(c(1, 2), nrow = 1), widths = c(4, 1))
+
+par(cex.main = 1.1, cex.lab = 1, cex.axis = 1)
+seqIplot(seq_def_hudomiet,
+         sortv = "from.start",
+         with.legend = FALSE,
+         ylab = "Individuals (N = 4)",
+         xlab = "Year",
+         las = 1,
+         yaxt = "n",
+         cpal = cpal_ordered)
+
+
+par(mar = c(0, 0, 0, 0))
+plot.new()
+legend_order <- c("No dementia", "Dementia", "Missing")
+legend("center",
+       legend = legend_order,
+       fill   = colors[legend_order],
+       bty    = "o",
+       box.lwd = 1,
+       bg = "white")
+
+dev.off()
+```
+
+
+```{r}
+# ---- Wu: dementia subset + reverters ----
+memimp_reverter_ids <- flag_reverters(
+  dt_analysis_age70_memimp_dementia, dem_cols, 1, 0
+)
+dt_memimp_dem_revert <- dt_analysis_age70_memimp_dementia %>%
+  filter(hhidpn %in% memimp_reverter_ids)
+
+cog_seq_memimp <- dt_memimp_dem_revert %>%
+  select(hhidpn, all_of(dem_cols)) %>%
+  mutate(across(starts_with("dem"), ~ case_when(
+    . == 0 ~ "No dementia",
+    . == 1 ~ "Dementia",
+    TRUE   ~ "Missing"
+  )))
+seq_data_memimp <- cog_seq_memimp %>% select(-hhidpn)
+colnames(seq_data_memimp) <- c("2010", "2012", "2014", "2016", "2018", "2020")
+
+seq_def_memimp <- seqdef(seq_data_memimp)  
+
+colors <- c(
+  "No dementia" = "#F0E68C",
+  "Dementia"    = "#FFA07A",
+  "Missing"     = "gray"
+)
+state_order  <- attr(seq_def_memimp, "alphabet")
+cpal_ordered <- colors[state_order]     
+
+file_path <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/seqIplot_wu.png"
+png(file_path, width = 10, height = 7, units = "in", res = 300)
+
+
+layout(matrix(c(1, 2), nrow = 1), widths = c(4, 1))
+
+par(cex.main = 1.1, cex.lab = 1, cex.axis = 1)
+seqIplot(seq_def_memimp,
+         sortv = "from.start",
+         with.legend = FALSE,
+         ylab = "Individuals (N = 171)",
+         xlab = "Year",
+         las = 1,
+         yaxt = "n",
+         cpal = cpal_ordered)
+
+
+par(mar = c(0, 0, 0, 0))
+plot.new()
+legend_order <- c("No dementia", "Dementia", "Missing")
+legend("center",
+       legend = legend_order,
+       fill   = colors[legend_order],
+       bty    = "o",
+       box.lwd = 1,
+       bg = "white")
+
+dev.off()
+```
+

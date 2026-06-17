@@ -1,0 +1,676 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-03-16"
+---
+
+# Package loading
+
+```{r}
+rm(list = ls())
+
+if (!require("pacman")){
+  install.packages("pacman", repos = "http://cran.us.r-project.org")
+}
+
+p_load(
+  "tidyverse", "here", "haven", "stringr", "dplyr", "labelled",
+  "purrr", "readr", "gtsummary", "gt","survey", "boot","survival"
+)
+```
+
+
+# Load the datasets
+
+
+```{r}
+source(here::here("0_paths_jl.R"))
+
+dt_analysis_age70 <- readRDS(here(
+  path_to_data,
+  "dt_analysis_age70.rds"
+))
+
+```
+
+
+```{r}
+#drop people with missing apoe_24_34_44
+table(dt_analysis_age70$apoe_24_34_44,exclude=NULL)
+
+dt_analysis_age70<-dt_analysis_age70%>%
+  filter(!is.na(apoe_24_34_44))
+```
+
+
+```{r}
+#drop people with missing apoe_34_44_drop24
+# table(dt_analysis_age70$apoe_34_44_drop24,exclude=NULL)
+# 
+# dt_analysis_age70<-dt_analysis_age70%>%
+#   filter(!is.na(apoe_34_44_drop24))
+```
+
+
+
+```{r}
+#split datasets
+
+source(here::here("function_jl.R"))
+#Split the data by each algorithm
+#convert variable type to factor
+#apply the factor function after stratifying by algorithm, because of the race_ethnicity variable
+dt_analysis_age70_langa <-dt_analysis_age70%>%
+  filter(algorithm=="lw")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_hudomiet <-dt_analysis_age70%>%
+  filter(algorithm=="hudomiet")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_dp <-dt_analysis_age70%>%
+  filter(algorithm=="expert")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_memimp <-dt_analysis_age70%>%
+  filter(algorithm=="wu")%>%
+  recode_for_gtsum()
+```
+
+
+
+```{r}
+#generate survey designs for weighted models
+options(survey.lonely.psu = "adjust")
+
+dt_analysis_age70_langa_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_langa,
+  nest = TRUE
+)
+
+dt_analysis_age70_memimp_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_memimp,
+  nest = TRUE
+)
+
+dt_analysis_age70_hudomiet_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_hudomiet,
+  nest = TRUE
+)
+
+dt_analysis_age70_dp_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_dp,
+  nest = TRUE
+)
+
+
+#Check the variable types before fitting the model
+vcol <- c(
+  "time_from_2010",
+  "event_dementia",
+  "centered_baseline_age",
+  "ragender_f",
+  "education_degree_f",
+  "race_ethnicity_f",
+  "r10diabe_f",
+  "r10stroke_f",
+  "r10smokev_f"
+)
+
+str(dt_analysis_age70_langa[, vcol])
+str(dt_analysis_age70_langa_svy$variables[, vcol])
+```
+
+# Cox models
+
+```{r}
+#Fit the unweighted and weighted age adjusted Cox model and save the model results
+model_names <- c("langa", "memimp", "hudomiet", "dp")
+
+model_formulas <- list(
+  model1  = "ragender_f + centered_baseline_age",
+  model2  = "education_degree_f + centered_baseline_age",
+  model3  = "education_degree_f + race_ethnicity_f + centered_baseline_age",
+  model4  = "race_ethnicity_f + centered_baseline_age",
+  model5  = "education_degree_f + race_ethnicity_f + ragender_f + centered_baseline_age",
+  model6  = "race_ethnicity_f + ragender_f + centered_baseline_age",
+  model7  = "r10diabe_f + education_degree_f + race_ethnicity_f + ragender_f + centered_baseline_age",
+  model8  = "r10stroke_f + education_degree_f + race_ethnicity_f + ragender_f + centered_baseline_age",
+  model9  = "r10smokev_f + education_degree_f + race_ethnicity_f + ragender_f + centered_baseline_age",
+  model10 = "centered_baseline_age"
+)
+
+age_adjusted_results <- data.frame()
+
+for (i in seq_along(model_formulas)) {
+  model_name <- names(model_formulas)[i]
+  rhs <- model_formulas[[i]]
+
+  for (source in model_names) {
+
+    fml <- as.formula(
+      paste("Surv(time_from_2010, event_dementia) ~", rhs)
+    )
+
+    df  <- get(paste0("dt_analysis_age70_", source))
+    svy <- get(paste0("dt_analysis_age70_", source, "_svy"))
+
+    ## unweighted
+    cox <- coxph(fml, data = df)
+    s1  <- summary(cox)
+
+    age_adjusted_results <- rbind(
+      age_adjusted_results,
+      data.frame(
+        model = model_name,
+        algorithm = source,
+        term = rownames(s1$coefficients),
+        HR = s1$coefficients[, "exp(coef)"],
+        lower_95 = s1$conf.int[, "lower .95"],
+        upper_95 = s1$conf.int[, "upper .95"],
+        p_value = s1$coefficients[, "Pr(>|z|)"],
+        row.names = NULL
+      )
+    )
+
+    ## weighted
+    svy_cox <- svycoxph(fml, design = svy)
+    s2 <- summary(svy_cox)
+
+    age_adjusted_results <- rbind(
+      age_adjusted_results,
+      data.frame(
+        model = paste0(model_name, "_svy"),
+        algorithm = source,
+        term = rownames(s2$coefficients),
+        HR = s2$coefficients[, "exp(coef)"],
+        lower_95 = s2$conf.int[, "lower .95"],
+        upper_95 = s2$conf.int[, "upper .95"],
+        p_value = s2$coefficients[, "Pr(>|z|)"],
+        row.names = NULL
+      )
+    )
+  }
+}
+
+#Fit the unweighted and weighted age unadjusted Cox model and save the model results
+model_formulas <- list(
+  model1 = "ragender_f",
+  model2 = "education_degree_f",
+  model3 = "education_degree_f + race_ethnicity_f",
+  model4 = "race_ethnicity_f",
+  model5 = "education_degree_f + race_ethnicity_f + ragender_f",
+  model6 = "race_ethnicity_f + ragender_f",
+  model7 = "r10diabe_f + education_degree_f + race_ethnicity_f + ragender_f",
+  model8 = "r10stroke_f + education_degree_f + race_ethnicity_f + ragender_f",
+  model9 = "r10smokev_f + education_degree_f + race_ethnicity_f + ragender_f"
+)
+
+age_unadjusted_results <- data.frame()
+
+for (i in seq_along(model_formulas)) {
+  model_name <- names(model_formulas)[i]
+  rhs <- model_formulas[[i]]
+
+  for (source in model_names) {
+
+    fml <- as.formula(
+      paste("Surv(time_from_2010, event_dementia) ~", rhs)
+    )
+
+    df  <- get(paste0("dt_analysis_age70_", source))
+    svy <- get(paste0("dt_analysis_age70_", source, "_svy"))
+
+    ## unweighted
+    cox <- coxph(fml, data = df)
+    s1  <- summary(cox)
+
+    age_unadjusted_results <- rbind(
+      age_unadjusted_results,
+      data.frame(
+        model = model_name,
+        algorithm = source,
+        term = rownames(s1$coefficients),
+        HR = s1$coefficients[, "exp(coef)"],
+        lower_95 = s1$conf.int[, "lower .95"],
+        upper_95 = s1$conf.int[, "upper .95"],
+        p_value = s1$coefficients[, "Pr(>|z|)"],
+        row.names = NULL
+      )
+    )
+
+    ## weighted
+    svy_cox <- svycoxph(fml, design = svy)
+    s2 <- summary(svy_cox)
+
+    age_unadjusted_results <- rbind(
+      age_unadjusted_results,
+      data.frame(
+        model = paste0(model_name, "_svy"),
+        algorithm = source,
+        term = rownames(s2$coefficients),
+        HR = s2$coefficients[, "exp(coef)"],
+        lower_95 = s2$conf.int[, "lower .95"],
+        upper_95 = s2$conf.int[, "upper .95"],
+        p_value = s2$coefficients[, "Pr(>|z|)"],
+        row.names = NULL
+      )
+    )
+  }
+}
+
+```
+
+
+
+```{r}
+#Create two data frames, risk_factor_info and risk_factor_info2, to annotate the risk factors in the models and their corresponding adjustment variables.
+#risk_factor_info for age adjust
+risk_factor_info <- tibble(
+  model_num = c("1", "5", "6", "6", "6", "7", "8", "9", "10"),
+  term = c("ragender_fFemale",
+           "education_degree_f< HS",
+           "race_ethnicity_fNH Black",
+           "race_ethnicity_fHispanic",
+           "race_ethnicity_fNH Other",
+           "r10diabe_fYes", "r10stroke_fYes", "r10smokev_fYes",
+           "centered_baseline_age"),
+  `Risk factor` = c("Female", "< HS",
+                    "NH Black", "Hispanic", "NH Other",
+                    "Diabetes history in 2010", "Stroke history in 2010", "Smoker history in 2010",
+                    "Age"),
+  `Adjustment variables` = c("Age",
+                             "Age, race/ethnicity, sex",
+                             "Age, sex", "Age, sex", "Age, sex",
+                             "Age, education, race/ethnicity, sex",
+                             "Age, education, race/ethnicity, sex",
+                             "Age, education, race/ethnicity, sex",
+                             "--")
+)
+
+
+
+#risk_factor_info for age unadjust
+risk_factor_info2 <- tibble(
+  model_num = c("1", "5", "6", "6", "6", "7", "8", "9"),
+  term = c("ragender_fFemale",
+           "education_degree_f< HS",
+           "race_ethnicity_fNH Black",
+           "race_ethnicity_fHispanic",
+           "race_ethnicity_fNH Other",
+           "r10diabe_fYes", "r10stroke_fYes", "r10smokev_fYes"),
+  `Risk factor` = c("Female", "< HS",
+                    "NH Black", "Hispanic", "NH Other",
+                    "Diabetes history in 2010", "Stroke history in 2010", "Smoker history in 2010"),
+  `Adjustment variables` = c("--",
+                             "Race/ethnicity, sex",
+                             "Sex", "Sex", "Sex",
+                             "Education, race/ethnicity, sex",
+                             "Education, race/ethnicity, sex",
+                             "Education, race/ethnicity, sex")
+)
+
+
+#The organized model results
+#age adjust and unweighted
+filtered_adj_unweighted <- age_adjusted_results %>%
+  filter(!str_detect(model, "_svy$")) %>%
+  mutate(model_num = str_extract(model, "\\d+")) %>%
+  inner_join(risk_factor_info, by = c("model_num", "term"))
+
+
+#age adjust and weighted
+filtered_adj_weighted <- age_adjusted_results %>%
+  filter(str_detect(model, "_svy$")) %>%
+  mutate(model_num = str_extract(model, "\\d+")) %>%
+  inner_join(risk_factor_info, by = c("model_num", "term"))
+
+
+#age unadjust and unweighted
+filtered_unadj_unweighted <- age_unadjusted_results %>%
+  filter(!str_detect(model, "_svy$")) %>%
+  mutate(model_num = str_extract(model, "\\d+")) %>%
+  inner_join(risk_factor_info2, by = c("model_num", "term"))
+
+
+#age unadjust and weighted
+filtered_unadj_weighted <- age_unadjusted_results %>%
+  filter(str_detect(model, "_svy$")) %>%
+  mutate(model_num = str_extract(model, "\\d+")) %>%
+  inner_join(risk_factor_info2, by = c("model_num", "term"))
+
+format_result_table <- function(df, risk_info) {
+  df %>%
+    mutate(hr_ci = sprintf("%.2f (%.2f–%.2f)", HR, lower_95, upper_95)) %>%
+    mutate(algorithm = case_when(
+      algorithm == "langa" ~ "Langa",
+      algorithm == "memimp" ~ "Wu",
+      algorithm == "dp" ~ "Expert",
+      algorithm == "hudomiet" ~ "Hudomiet"
+    )) %>%
+    select(`Risk factor`, `Adjustment variables`, algorithm, hr_ci) %>%
+    pivot_wider(names_from = algorithm, values_from = hr_ci) %>%
+    arrange(factor(`Risk factor`, levels = unique(risk_info$`Risk factor`)))
+}
+
+result_table_adj_unweighted  <- format_result_table(filtered_adj_unweighted, risk_factor_info)
+result_table_adj_weighted    <- format_result_table(filtered_adj_weighted, risk_factor_info)
+result_table_unadj_unweighted <- format_result_table(filtered_unadj_unweighted, risk_factor_info2)
+result_table_unadj_weighted   <- format_result_table(filtered_unadj_weighted, risk_factor_info2)
+
+unw_result <- bind_rows(result_table_adj_unweighted, result_table_unadj_unweighted)
+w_result   <- bind_rows(result_table_adj_weighted, result_table_unadj_weighted)
+
+
+# output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
+# 
+# 
+# write_excel_csv(unw_result,
+#                 file = file.path(output_dir, "cox_results_unweighted_3_16_apoe.csv"))
+# 
+# write_excel_csv(w_result,
+#                 file = file.path(output_dir, "cox_results_weighted_3_16_apoe.csv"))
+
+```
+
+
+# Analyses stratified by race/ethnicity
+
+```{r}
+#Stratify each algorithm's data by race/ethnicity
+# langa
+dt_analysis_age70_langa_nh_w <- dt_analysis_age70_langa %>%
+  filter(race_ethnicity_f == "NH White")
+
+dt_analysis_age70_langa_nh_b <- dt_analysis_age70_langa %>%
+  filter(race_ethnicity_f == "NH Black")
+
+dt_analysis_age70_langa_hispanic <- dt_analysis_age70_langa %>%
+  filter(race_ethnicity_f == "Hispanic")
+
+dt_analysis_age70_langa_nh_o <- dt_analysis_age70_langa %>%
+  filter(race_ethnicity_f == "NH Other")
+
+
+# hudomiet
+dt_analysis_age70_hudomiet_nh_w <- dt_analysis_age70_hudomiet %>%
+  filter(race_ethnicity_f == "NH White")
+
+dt_analysis_age70_hudomiet_nh_b <- dt_analysis_age70_hudomiet %>%
+  filter(race_ethnicity_f == "NH Black")
+
+dt_analysis_age70_hudomiet_hispanic <- dt_analysis_age70_hudomiet %>%
+  filter(race_ethnicity_f == "Hispanic")
+
+dt_analysis_age70_hudomiet_nh_o <- dt_analysis_age70_hudomiet %>%
+  filter(race_ethnicity_f == "NH Other")
+
+
+# dp
+dt_analysis_age70_dp_nh_w <- dt_analysis_age70_dp %>%
+  filter(race_ethnicity_f == "NH White")
+
+dt_analysis_age70_dp_nh_b <- dt_analysis_age70_dp %>%
+  filter(race_ethnicity_f == "NH Black")
+
+dt_analysis_age70_dp_hispanic <- dt_analysis_age70_dp %>%
+  filter(race_ethnicity_f == "Hispanic")
+
+
+# memimp
+dt_analysis_age70_memimp_nh_w <- dt_analysis_age70_memimp %>%
+  filter(race_ethnicity_f == "NH White")
+
+dt_analysis_age70_memimp_nh_b <- dt_analysis_age70_memimp %>%
+  filter(race_ethnicity_f == "NH Black")
+
+dt_analysis_age70_memimp_nh_o <- dt_analysis_age70_memimp %>%
+  filter(race_ethnicity_f == "NH Other")
+
+```
+
+
+# Cox models stratified by race ethnicity
+
+
+```{r}
+# Create a survey design object for each racial subgroup dataset
+race_datasets <- ls(pattern = "^dt_analysis_age70_.*_(nh_w|nh_b|hispanic|nh_o)$")
+
+for (df_name in race_datasets) {
+  df <- get(df_name)
+  svy_name <- paste0(df_name, "_svy")
+  svy_obj <- svydesign(
+    ids = ~secu,
+    strata = ~stratum,
+    weights = ~mwgtr,
+    data = df,
+    nest = TRUE
+  )
+  assign(svy_name, svy_obj, envir = .GlobalEnv)
+}
+
+model_names <- c("langa", "memimp", "hudomiet", "dp")
+race_suffixes <- c("nh_w", "nh_b", "hispanic", "nh_o")
+
+
+model_formulas <- list(
+  model4 = "centered_baseline_age",
+  model5 = "education_degree_f + ragender_f + centered_baseline_age",
+  model6 = "ragender_f + centered_baseline_age",
+  model7 = "r10diabe_f + education_degree_f + ragender_f + centered_baseline_age",
+  model8 = "r10stroke_f + education_degree_f + ragender_f + centered_baseline_age",
+  model9 = "r10smokev_f + education_degree_f + ragender_f + centered_baseline_age"
+)
+
+
+stratified_age70_results <- data.frame()
+
+for (model_name in names(model_formulas)) {
+  rhs <- model_formulas[[model_name]]
+  
+  for (source in model_names) {
+    for (race in race_suffixes) {
+      df_name <- paste0("dt_analysis_age70_", source, "_", race)
+      if (!exists(df_name)) next
+      
+      df <- get(df_name)
+      svy_name <- paste0(df_name, "_svy")
+      svy <- get(svy_name)
+      
+      fml <- as.formula(paste("Surv(time_from_2010, event_dementia) ~", rhs))
+      
+      ## Unweighted Cox model
+      cox <- coxph(fml, data = df)
+      s1 <- summary(cox)
+      df_result1 <- data.frame(
+        model = model_name,
+        algorithm = source,
+        race_group = race,
+        term = rownames(s1$coefficients),
+        HR = s1$coefficients[, "exp(coef)"],
+        lower_95 = s1$conf.int[, "lower .95"],
+        upper_95 = s1$conf.int[, "upper .95"],
+        p_value = s1$coefficients[, "Pr(>|z|)"],
+        row.names = NULL
+      )
+      stratified_age70_results <- rbind(stratified_age70_results, df_result1)
+      
+      ## Weighted Cox model
+      svy_cox <- svycoxph(fml, design = svy)
+      s2 <- summary(svy_cox)
+      df_result2 <- data.frame(
+        model = paste0(model_name, "_svy"),
+        algorithm = source,
+        race_group = race,
+        term = rownames(s2$coefficients),
+        HR = s2$coefficients[, "exp(coef)"],
+        lower_95 = s2$conf.int[, "lower .95"],
+        upper_95 = s2$conf.int[, "upper .95"],
+        p_value = s2$coefficients[, "Pr(>|z|)"],
+        row.names = NULL
+      )
+      stratified_age70_results <- rbind(stratified_age70_results, df_result2)
+    }
+  }
+}
+
+```
+
+
+
+
+```{r}
+##Create risk_factor_info_stratified to annotate the risk factors in the models and their corresponding adjustment variables.
+risk_factor_info_stratified <- tibble(
+  model_num = c("5", "4", "6", "7", "8", "9"),
+  term = c(
+    "education_degree_f< HS",   # model5: education
+    "centered_baseline_age",    # model4
+    "ragender_fFemale",         # model6: sex 
+    "r10diabe_fYes",            # model7
+    "r10stroke_fYes",           # model8
+    "r10smokev_fYes"            # model9
+  ),
+  `Risk factor` = c(
+    "< HS",
+    "Age",
+    "Female",
+    "Diabetes history in 2010",
+    "Stroke history in 2010",
+    "Smoker history in 2010"
+  ),
+  `Adjustment variables` = c(
+    "Age, sex",                 # model5
+    "--",                       # model4
+    "Age",                      # model6
+    "Age, education, sex",      # model7
+    "Age, education, sex",      # model8
+    "Age, education, sex"       # model9
+  )
+)
+
+#Further organize the model results using a function
+format_result_table_by_race <- function(df, risk_info) {
+  df %>%
+    mutate(
+      HR_CI = sprintf("%.2f (%.2f–%.2f)", HR, lower_95, upper_95),
+      algorithm = case_when(
+        algorithm == "langa" ~ "Langa",
+        algorithm == "memimp" ~ "Wu",
+        algorithm == "dp" ~ "Expert",
+        algorithm == "hudomiet" ~ "Hudomiet"
+      ),
+      race_group = case_when(
+        race_group == "nh_w" ~ "NH White",
+        race_group == "nh_b" ~ "NH Black",
+        race_group == "hispanic" ~ "Hispanic",
+        race_group == "nh_o" ~ "NH Other"
+      )
+    ) %>%
+    select(model, model_num = model_num, term, algorithm, race_group, HR_CI) %>%
+    pivot_wider(names_from = algorithm, values_from = HR_CI) %>%
+    inner_join(risk_info, by = c("model_num", "term")) %>%
+    select(`Risk factor`, `Adjustment variables`, race = race_group, Expert, Hudomiet, Langa, Wu) %>%
+    arrange(factor(`Risk factor`, levels = unique(risk_info$`Risk factor`)),
+            factor(race, levels = c("NH White", "NH Black", "Hispanic", "NH Other")))
+}
+
+
+# Weighted
+filtered_adj_stratified_weighted <- stratified_age70_results %>%
+  filter(str_detect(model, "_svy$")) %>%
+  mutate(model_num = str_extract(model, "\\d+")) %>%
+  inner_join(risk_factor_info_stratified, by = c("model_num", "term"))
+
+result_table_stratified_weighted <- format_result_table_by_race(
+  filtered_adj_stratified_weighted,
+  risk_factor_info_stratified
+)
+
+# Unweighted
+filtered_adj_stratified_unweighted <- stratified_age70_results %>%
+  filter(!str_detect(model, "_svy$")) %>%
+  mutate(model_num = str_extract(model, "\\d+")) %>%
+  inner_join(risk_factor_info_stratified, by = c("model_num", "term"))
+
+result_table_stratified_unweighted <- format_result_table_by_race(
+  filtered_adj_stratified_unweighted,
+  risk_factor_info_stratified
+)
+
+
+# output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
+# write_excel_csv(result_table_stratified_unweighted,
+#                 file = file.path(output_dir, "result_table_stratified_unweighted_3_16_apoe.csv"))
+# 
+# write_excel_csv(result_table_stratified_weighted,
+#                 file = file.path(output_dir, "result_table_stratified_weighted_3_16_apoe.csv"))
+
+```
+
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

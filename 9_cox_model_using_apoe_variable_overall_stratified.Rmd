@@ -1,0 +1,371 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-03-16"
+---
+
+# Package loading
+
+```{r}
+rm(list = ls())
+
+if (!require("pacman")){
+  install.packages("pacman", repos = "http://cran.us.r-project.org")
+}
+
+p_load(
+  "tidyverse", "here", "haven", "stringr", "dplyr", "labelled",
+  "purrr", "readr", "gtsummary", "gt","survey", "boot","survival"
+)
+```
+
+
+# Load the datasets
+
+
+```{r}
+source(here::here("0_paths_jl.R"))
+
+dt_analysis_age70 <- readRDS(here(
+  path_to_data,
+  "dt_analysis_age70.rds"
+))
+
+```
+
+
+```{r}
+#drop people with missing apoe_24_34_44
+table(dt_analysis_age70$apoe_24_34_44,exclude=NULL)
+
+dt_analysis_age70<-dt_analysis_age70%>%
+  filter(!is.na(apoe_24_34_44))
+```
+
+
+```{r}
+#drop people with missing apoe_34_44_drop24
+# table(dt_analysis_age70$apoe_34_44_drop24,exclude=NULL)
+# 
+# dt_analysis_age70<-dt_analysis_age70%>%
+#   filter(!is.na(apoe_34_44_drop24))
+```
+
+
+
+
+```{r}
+source(here::here("function_jl.R"))
+#Split the data by each algorithm
+#convert variable type to factor
+#apply the factor function after stratifying by algorithm, because of the race_ethnicity variable
+dt_analysis_age70_langa <-dt_analysis_age70%>%
+  filter(algorithm=="lw")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_hudomiet <-dt_analysis_age70%>%
+  filter(algorithm=="hudomiet")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_dp <-dt_analysis_age70%>%
+  filter(algorithm=="expert")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_memimp <-dt_analysis_age70%>%
+  filter(algorithm=="wu")%>%
+  recode_for_gtsum()
+```
+
+
+
+```{r}
+#generate survey designs for weighted models
+options(survey.lonely.psu = "adjust")
+
+dt_analysis_age70_langa_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_langa,
+  nest = TRUE
+)
+
+dt_analysis_age70_memimp_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_memimp,
+  nest = TRUE
+)
+
+dt_analysis_age70_hudomiet_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_hudomiet,
+  nest = TRUE
+)
+
+dt_analysis_age70_dp_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_dp,
+  nest = TRUE
+)
+
+
+#Check the variable types before fitting the model
+vcol <- c(
+  "time_from_2010",
+  "event_dementia",
+  "centered_baseline_age",
+  "ragender_f",
+  "education_degree_f",
+  "race_ethnicity_f",
+  "r10diabe_f",
+  "r10stroke_f",
+  "r10smokev_f"
+)
+
+str(dt_analysis_age70_langa[, vcol])
+str(dt_analysis_age70_langa_svy$variables[, vcol])
+```
+
+# Cox models
+
+```{r}
+# Fit unweighted and weighted Cox models:
+# 1) APOE + baseline age only
+# 2) Fully adjusted model
+
+model_names <- c("langa", "memimp", "hudomiet", "dp")
+
+model_formulas <- list(
+  apoe_age = "apoe_24_34_44_f + centered_baseline_age",
+
+  fully_adjusted = "apoe_24_34_44_f + education_degree_f + race_ethnicity_f + ragender_f + centered_baseline_age"
+)
+
+cox_results <- data.frame()
+
+for (i in seq_along(model_formulas)) {
+  model_name <- names(model_formulas)[i]
+  rhs <- model_formulas[[i]]
+
+  for (source in model_names) {
+
+    fml <- as.formula(
+      paste("Surv(time_from_2010, event_dementia) ~", rhs)
+    )
+
+    df  <- get(paste0("dt_analysis_age70_", source))
+    svy <- get(paste0("dt_analysis_age70_", source, "_svy"))
+
+    ## unweighted
+    cox <- coxph(fml, data = df)
+    s1  <- summary(cox)
+
+    cox_results <- rbind(
+      cox_results,
+      data.frame(
+        weight_type = "unweighted",
+        model = model_name,
+        algorithm = source,
+        term = rownames(s1$coefficients),
+        HR = s1$coefficients[, "exp(coef)"],
+        lower_95 = s1$conf.int[, "lower .95"],
+        upper_95 = s1$conf.int[, "upper .95"],
+        p_value = s1$coefficients[, "Pr(>|z|)"],
+        row.names = NULL
+      )
+    )
+
+    ## weighted
+    svy_cox <- svycoxph(fml, design = svy)
+    s2 <- summary(svy_cox)
+
+    cox_results <- rbind(
+      cox_results,
+      data.frame(
+        weight_type = "weighted",
+        model = model_name,
+        algorithm = source,
+        term = rownames(s2$coefficients),
+        HR = s2$coefficients[, "exp(coef)"],
+        lower_95 = s2$conf.int[, "lower .95"],
+        upper_95 = s2$conf.int[, "upper .95"],
+        p_value = s2$coefficients[, "Pr(>|z|)"],
+        row.names = NULL
+      )
+    )
+  }
+}
+
+
+# output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
+# 
+# 
+# write_excel_csv(cox_results,
+#                 file = file.path(output_dir, "cox_results_apoe.csv"))
+
+```
+
+
+# Analyses stratified by race/ethnicity
+
+```{r}
+#Stratify each algorithm's data by race/ethnicity
+# langa
+dt_analysis_age70_langa_nh_w <- dt_analysis_age70_langa %>%
+  filter(race_ethnicity_f == "NH White")
+
+dt_analysis_age70_langa_nh_b <- dt_analysis_age70_langa %>%
+  filter(race_ethnicity_f == "NH Black")
+
+dt_analysis_age70_langa_hispanic <- dt_analysis_age70_langa %>%
+  filter(race_ethnicity_f == "Hispanic")
+
+dt_analysis_age70_langa_nh_o <- dt_analysis_age70_langa %>%
+  filter(race_ethnicity_f == "NH Other")
+
+
+# hudomiet
+dt_analysis_age70_hudomiet_nh_w <- dt_analysis_age70_hudomiet %>%
+  filter(race_ethnicity_f == "NH White")
+
+dt_analysis_age70_hudomiet_nh_b <- dt_analysis_age70_hudomiet %>%
+  filter(race_ethnicity_f == "NH Black")
+
+dt_analysis_age70_hudomiet_hispanic <- dt_analysis_age70_hudomiet %>%
+  filter(race_ethnicity_f == "Hispanic")
+
+dt_analysis_age70_hudomiet_nh_o <- dt_analysis_age70_hudomiet %>%
+  filter(race_ethnicity_f == "NH Other")
+
+
+# dp
+dt_analysis_age70_dp_nh_w <- dt_analysis_age70_dp %>%
+  filter(race_ethnicity_f == "NH White")
+
+dt_analysis_age70_dp_nh_b <- dt_analysis_age70_dp %>%
+  filter(race_ethnicity_f == "NH Black")
+
+dt_analysis_age70_dp_hispanic <- dt_analysis_age70_dp %>%
+  filter(race_ethnicity_f == "Hispanic")
+
+
+# memimp
+dt_analysis_age70_memimp_nh_w <- dt_analysis_age70_memimp %>%
+  filter(race_ethnicity_f == "NH White")
+
+dt_analysis_age70_memimp_nh_b <- dt_analysis_age70_memimp %>%
+  filter(race_ethnicity_f == "NH Black")
+
+dt_analysis_age70_memimp_nh_o <- dt_analysis_age70_memimp %>%
+  filter(race_ethnicity_f == "NH Other")
+
+```
+
+
+```{r}
+model_names <- c("langa", "memimp", "hudomiet", "dp")
+
+race_levels <- c("NH White", "NH Black", "Hispanic", "NH Other")
+
+model_formulas <- list(
+  apoe_age = "apoe_24_34_44_f + centered_baseline_age",
+  fully_adjusted = "apoe_24_34_44_f + education_degree_f + ragender_f + centered_baseline_age"
+)
+
+cox_results <- data.frame()
+
+for (model_name in names(model_formulas)) {
+  rhs <- model_formulas[[model_name]]
+
+  for (source in model_names) {
+
+    df_full  <- get(paste0("dt_analysis_age70_", source))
+    svy_full <- get(paste0("dt_analysis_age70_", source, "_svy"))
+
+    for (race_group in race_levels) {
+
+      # unweighted subset
+      df <- df_full %>%
+        filter(race_ethnicity_f == race_group)
+
+      # weighted subset
+      svy <- subset(svy_full, race_ethnicity_f == race_group)
+      
+      #for memimp no hispance
+      if (nrow(df) == 0) next
+
+      fml <- as.formula(
+        paste("Surv(time_from_2010, event_dementia) ~", rhs)
+      )
+
+      ## unweighted Cox
+      cox <- try(coxph(fml, data = df), silent = TRUE)
+
+      if (!inherits(cox, "try-error")) {
+        s1 <- summary(cox)
+
+        cox_results <- rbind(
+          cox_results,
+          data.frame(
+            race_strata = race_group,
+            weight_type = "unweighted",
+            model = model_name,
+            algorithm = source,
+            term = rownames(s1$coefficients),
+            HR = s1$coefficients[, "exp(coef)"],
+            lower_95 = s1$conf.int[, "lower .95"],
+            upper_95 = s1$conf.int[, "upper .95"],
+            p_value = round(s1$coefficients[, "Pr(>|z|)"], 2),
+            row.names = NULL
+          )
+        )
+      }
+
+      ## weighted Cox
+      svy_cox <- try(svycoxph(fml, design = svy), silent = TRUE)
+
+      if (!inherits(svy_cox, "try-error")) {
+        s2 <- summary(svy_cox)
+
+        cox_results <- rbind(
+          cox_results,
+          data.frame(
+            race_strata = race_group,
+            weight_type = "weighted",
+            model = model_name,
+            algorithm = source,
+            term = rownames(s2$coefficients),
+            HR = s2$coefficients[, "exp(coef)"],
+            lower_95 = s2$conf.int[, "lower .95"],
+            upper_95 = s2$conf.int[, "upper .95"],
+            p_value = round(s2$coefficients[, "Pr(>|z|)"], 2),
+            row.names = NULL
+          )
+        )
+      }
+    }
+  }
+}
+```
+
+
+
+
+```{r}
+# output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
+# write_excel_csv(cox_results,
+#                 file = file.path(output_dir, "result_table_stratified_apoe_3_19.csv"))
+
+```
+
+
+```{r}
+```
+
+

@@ -1,0 +1,170 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-08-14"
+---
+
+# Package loading
+
+```{r}
+rm(list = ls())
+
+if (!require("pacman")){
+  install.packages("pacman", repos='http://cran.us.r-project.org')
+}
+
+p_load(
+  "survival", "ggsurvfit", "survminer",
+  "dplyr", "haven", "stringr", "purrr", "broom",
+  "ggplot2","here","survey","tidyr"
+)
+```
+
+# Load the datasets
+
+```{r}
+source(here::here("0_paths_jl.R"))
+
+dt_analysis_age70 <- readRDS(here(
+  path_to_data,
+  "dt_analysis_age70.rds"
+))
+
+source(here::here("function_jl.R"))
+#convert variable type to factor
+#When creating the plot, the algorithm variable needs to be a factor
+dt_analysis_age70_f <- dt_analysis_age70 %>%
+  recode_for_gtsum() 
+```
+
+
+# Plot KM curve
+##weighted 70plus km curve
+```{r}
+#weighted 70plus km curve
+km_data_70plus_svy <- svydesign(
+  ids = ~secu,
+  strata = ~stratum,
+  weights = ~mwgtr,
+  data = dt_analysis_age70_f,
+  nest = TRUE
+)
+
+
+fit_svy <- svykm(Surv(time_from_2010, event_dementia) ~ algorithm_f,
+                 design = km_data_70plus_svy)
+
+#Save the survival probability at each time point
+df_fit_svy <- imap_dfr(fit_svy, ~{
+  tibble(
+    time  = .x$time,
+    weighted_surv= .x$surv,
+    algorithm = .y
+  )
+})
+
+
+df_fit_svy <- df_fit_svy %>%
+  mutate(
+    algorithm = factor(
+      algorithm,
+      levels = c("Langa-Weir", "Hudomiet", "Expert", "Wu")
+    )
+  )
+
+p<-ggplot(df_fit_svy, aes(x = time, y = weighted_surv, color = algorithm)) +
+  geom_step(linewidth = 1.2) +
+  scale_color_manual(
+    name   = "Algorithm",
+    values = c(
+      "Langa-Weir" = "#648FFF",
+      "Expert"   = "#E69F00",
+      "Hudomiet" = "#DC267F",
+      "Wu"     = "#00A08A"
+    )
+  ) +scale_x_continuous(breaks = seq(0, 10, 2)) +
+  labs(
+    x = "Years since 2010",
+    y = "Dementia-free survival probability"
+  ) +coord_cartesian(ylim = c(0.5, 1)) +
+  theme_minimal(base_size = 14)
+
+p
+
+
+ggsave(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve_70plus_svy_3_24.pdf",
+  plot = p,
+  bg = "white"
+)
+
+ggsave(
+  filename = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Manuscript/figures for manuscript/Figure 1 weighted km plot.pdf",
+  plot = p,
+  width = 8,
+  height = 6,
+  units = "in",
+  bg = "white"
+)
+```
+
+
+##Unweighted 70plus KM curve
+```{r}
+fit_unw <- survfit(Surv(time_from_2010, event_dementia) ~ algorithm_f, data = dt_analysis_age70_f)
+
+km_plot_70plus<-ggsurvplot(
+  fit_unw,
+  data = dt_analysis_age70_f,
+  xlab = "Years since 2010",
+  ylab = "Survival Probability",
+  palette = c("blue","orange", "red", "green"),
+  title = "KM Curve: Age ≥ 70 in 2010",
+  legend.title = "Algorithm",
+  legend.labs = c("Langa-Weir", "Wu", "Expert", "Hudomiet"),
+  surv.median.line = "none",
+  ggtheme = theme_minimal(),
+  break.x.by = 2,
+  xlim = c(0, 10),
+  ylim = c(0.5, 1)
+)
+
+km_plot_70plus
+
+ggsave(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve_70plus_12_12.png",
+  plot = km_plot_70plus$plot,
+  bg = "white")
+```
+
+
+
+# Combine weighted and unweighted survival probability results
+```{r}
+#Save the unweighted survival probability at each time point
+result_df_unweighted <- tidy(fit_unw)
+
+result_df_unweighted <- result_df_unweighted[, c("time", "estimate", "strata")]
+names(result_df_unweighted) <- c("time", "unweighted_surv", "algorithm")
+
+result_df_unweighted$algorithm <- gsub("algorithm_f=", "", result_df_unweighted$algorithm)
+
+#Combine weighted and unweighted survival probability results
+results_70plus <- df_fit_svy %>%
+  full_join(result_df_unweighted, by = c("time", "algorithm"))%>%
+  mutate(unweighted_surv = replace_na(unweighted_surv, 1))
+```
+
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

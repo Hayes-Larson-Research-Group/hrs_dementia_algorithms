@@ -1,0 +1,735 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-12-15"
+---
+
+
+# Package loading
+```{r}
+rm(list = ls())
+
+if (!require("pacman")) {
+  install.packages("pacman", repos = 'http://cran.us.r-project.org')
+}
+p_load("here", "tidyverse", "dplyr","formattable", "writexl", "readxl", "gridExtra",
+       "magrittr","survey","haven","boot")
+
+#No scientific notation
+options(scipen = 999)
+```
+
+
+# Load the datasets
+
+```{r}
+source(here::here("0_paths_jl.R"))
+
+dt_analysis_age70 <- readRDS(here(
+  path_to_data,
+  "dt_analysis_age70.rds"
+))
+
+
+#load function to factor variables
+source(here::here("function_jl.R"))
+
+#Create variables in preparation for subsequent analyses
+dt_analysis_age70<-dt_analysis_age70%>%
+  mutate(end_age = mage + time_from_2010)
+
+
+dt_analysis_age70_langa <-dt_analysis_age70%>%
+  filter(algorithm=="lw")%>%
+  recode_for_gtsum() 
+
+dt_analysis_age70_hudomiet <-dt_analysis_age70%>%
+  filter(algorithm=="hudomiet")%>%
+  recode_for_gtsum() 
+
+dt_analysis_age70_dp <-dt_analysis_age70%>%
+  filter(algorithm=="expert")%>%
+  recode_for_gtsum() 
+
+dt_analysis_age70_memimp <-dt_analysis_age70%>%
+  filter(algorithm=="wu")%>%
+  recode_for_gtsum() 
+```
+
+
+
+
+# Incidence rate function
+
+```{r}
+#---- Incidence rate function ----
+calculate_pys <- function(data, age_cat, fu_start, fu_end, event_flag) {
+  
+  age_cat_labels <- c()
+  for (i in 1:(length(age_cat) - 1)) {
+    # initialize the age interval
+    cat_start <- age_cat[i]
+    cat_end <- age_cat[i+1]
+    # create the variable names for py and case contribution
+    age_int <- paste0(cat_start, "_", cat_end)
+    vars <- paste0(c("py_", "case_"), age_int)
+    py_var <- vars[1]
+    case_var <- vars[2]
+    
+    # collect the age intervals for setting up the IR output table
+    age_cat_labels <- c(age_cat_labels, age_int)
+    
+    # calculate py and case contribution by age category
+    data <- data %>% 
+      mutate(
+        !! py_var := case_when(
+          # start of fu after age category or end of fu before age category: 
+          # contribute 0 pys
+          get(fu_start) > cat_end | get(fu_end) <= cat_start ~ 0, 
+          
+          # start of fu before age category and end of fu during age category: 
+          get(fu_start) <= cat_start & get(fu_end) <= cat_end ~ 
+            get(fu_end) - cat_start, 
+          
+          # start of fu before age category and end of fu after age category: 
+          get(fu_start) <= cat_start & get(fu_end) > cat_end ~ 
+            cat_end - cat_start, 
+          
+          # start and end of fu during age category:
+          get(fu_start) <= cat_end & get(fu_end) <= cat_end ~ 
+            get(fu_end) - get(fu_start), 
+          
+          # start of fu during age category and end of fu after age cateogory:
+          get(fu_start) <= cat_end & get(fu_end) > cat_end ~ 
+            cat_end - get(fu_start), 
+          
+          TRUE ~ NA_real_),  
+        
+        # if end of fu is during age category [start age, end age), case contribution is the dem flag. 
+        # otherwise, case contribution is zero
+        !! case_var := ifelse(
+          get(fu_end) < cat_end & get(fu_end) >= cat_start, 
+          get(event_flag), 0
+        )
+      )
+  }
+  
+  return(list(data = data, age_cat_labels = age_cat_labels))
+}
+```
+
+
+```{r}
+#Calculate the Age-specific incidence rates, Age-adjusted IR, and Crude IR, along with their corresponding confidence intervals
+calculate_ir <- function(data, age_cat_labels, std_pop, 
+                         exposure_treated = NULL, ethnicity_var=NULL,
+                         per_pys) {
+  # # # testing
+  # # data <- sex_gender_pys$data
+  # data <- sex_gender_pys_death$data
+  # age_cat_labels <- sex_gender_pys$age_cat_labels
+  # std_pop <- c(16817924, 12435263, 9278166, 7317795, 5743327, 5493433)
+  # # using 2010 US census population as the standard population
+  # # set up age-specific IR table
+  # per_pys = 1000
+  # exposure_treated <- c("female", 1)
+  if (!is.null(exposure_treated)) {
+    data <- data %>%
+      filter(get(exposure_treated[1]) == exposure_treated[2])
+  }
+  
+  if (!is.null(ethnicity_var)) {
+    data <- split(data, data[[ethnicity_var]])
+    } else {
+    data <- list(all = data)  
+    }
+
+
+  
+  out <- lapply(data, function(x) {
+    # #Test
+    # x <- data
+    # using 2000 US census population as the standard population
+    # set up age-specific IR table
+    age_spec_ir <- tibble(
+      age_range = age_cat_labels, 
+      pop_count = std_pop, # std pop - count by age category
+      pop_total = sum(pop_count), # std pop total 
+      pop_prop = pop_count / pop_total, # std pop prop by age category
+      unw_pys = NA, 
+      unw_cases = NA)
+    
+    for (i in 1:length(age_cat_labels)) {
+      # sum up pys and cases by age category
+      cat <- age_cat_labels[i]
+      age_spec_ir[i, "unw_pys"] <- sum(x[, paste0("py_", cat)]) 
+      age_spec_ir[i, "unw_cases"] <- sum(x[, paste0("case_", cat)])
+      
+    }
+    
+    # age specific IRs
+    age_spec_ir <- age_spec_ir %>% 
+      mutate(
+        unw_adj_ir = unw_cases / unw_pys,
+        unw_adj_ir_se = sqrt(unw_cases / unw_pys^2),
+        unw_adj_ir_CI_l = unw_adj_ir - 1.96 * unw_adj_ir_se,
+        unw_adj_ir_CI_u = unw_adj_ir + 1.96 * unw_adj_ir_se
+      ) 
+    
+    # age adjusted IR
+    ir_out <- age_spec_ir %>% 
+      mutate(
+        # weight with standard pop prop
+        unw_adj_ir_pop = unw_cases / unw_pys * pop_prop,
+        unw_adj_ir_pop_var = unw_cases / unw_pys^2 * pop_prop^2,
+        unw_pys_squared = unw_pys^2) %>% 
+      dplyr::summarise(
+        across(c(unw_cases, unw_pys, unw_pys_squared), sum), 
+        crude_ir = unw_cases/unw_pys,
+        crude_ir_var = unw_cases/unw_pys_squared,
+        adj_ir = sum(unw_adj_ir_pop, na.rm=TRUE),
+        adj_ir_var = sum(unw_adj_ir_pop_var, na.rm=TRUE)) %>% 
+      mutate(
+        adj_ir_se = sqrt(adj_ir_var),
+        adj_ir_l = adj_ir - 1.96 * adj_ir_se,
+        adj_ir_u = adj_ir + 1.96 * adj_ir_se,
+        crude_ir_se = sqrt(crude_ir_var),
+        crude_ir_l = crude_ir - 1.96 * crude_ir_se,
+        crude_ir_u = crude_ir + 1.96 * crude_ir_se) 
+    
+    # format the numbers to 1 decimal point and per 1000 pys
+    out_1 <- age_spec_ir %>% 
+      select(age_range, unw_cases, unw_pys,
+             unw_adj_ir, unw_adj_ir_CI_l, unw_adj_ir_CI_u) %>%
+      mutate(across(contains("ir"), function(x) x*per_pys))
+    
+    out_2 <- ir_out %>% 
+      select(unw_cases, unw_pys, 
+             crude_ir, crude_ir_l, crude_ir_u, adj_ir, adj_ir_l, adj_ir_u) %>% 
+      mutate(across(contains("ir"), function(x) x*per_pys))
+    
+    return(list("age_spec" = out_1, "age_adj" = out_2))
+  }
+  )
+  
+  return(out)
+}
+```
+
+
+```{r}
+# Applying function to datasets
+age_cat <- c(50,55,60,65,70, 75, 80, 85, 90, 95, 120)
+sex_gender_pys_langa<- 
+  calculate_pys(dt_analysis_age70_langa, age_cat, "mage", "end_age",
+                "event_dementia")
+
+
+age_cat <- c(70, 75, 80, 85, 90, 95, 120)
+sex_gender_pys_memimp <- 
+  calculate_pys(dt_analysis_age70_memimp , age_cat, "mage", "end_age",
+                "event_dementia")
+
+
+age_cat <- c(65,70, 75, 80, 85, 90, 95, 120)
+sex_gender_pys_hudomiet <- 
+  calculate_pys(dt_analysis_age70_hudomiet, age_cat, "mage", "end_age",
+                "event_dementia")
+
+
+age_cat <- c(70, 75, 80, 85, 90, 95, 120)
+sex_gender_pys_dp <- 
+  calculate_pys(dt_analysis_age70_dp , age_cat, "mage", "end_age",
+                "event_dementia")
+
+
+#Calculate the weighted person-years and number of cases.
+df_pys_langa<- sex_gender_pys_langa$data
+df_pys_memimp <- sex_gender_pys_memimp$data
+df_pys_hudomiet <- sex_gender_pys_hudomiet$data
+df_pys_dp <- sex_gender_pys_dp$data
+
+
+weighted_df_pys_langa <- df_pys_langa %>%
+  mutate(across(
+    c(py_50_55, case_50_55,
+      py_55_60, case_55_60,
+      py_60_65, case_60_65,
+      py_65_70, case_65_70,
+      py_70_75, case_70_75,
+      py_75_80, case_75_80,
+      py_80_85, case_80_85,
+      py_85_90, case_85_90,
+      py_90_95, case_90_95,
+      py_95_120, case_95_120),
+    ~ .x * mwgtr,
+    .names = "weighted_{.col}"
+  ))
+
+
+weighted_df_pys_memimp <- df_pys_memimp %>%
+  mutate(across(
+    c(py_70_75, case_70_75, py_75_80, case_75_80,
+      py_80_85, case_80_85, py_85_90, case_85_90,
+      py_90_95, case_90_95, py_95_120, case_95_120),
+    ~ .x * mwgtr,
+    .names = "weighted_{.col}"
+  ))
+
+weighted_df_pys_hudomiet <- df_pys_hudomiet %>%
+  mutate(across(
+    c(py_65_70, case_65_70,
+      py_70_75, case_70_75,
+      py_75_80, case_75_80,
+      py_80_85, case_80_85,
+      py_85_90, case_85_90,
+      py_90_95, case_90_95,
+      py_95_120, case_95_120),
+    ~ .x * mwgtr,
+    .names = "weighted_{.col}"
+  ))
+
+
+weighted_df_pys_dp <- df_pys_dp %>%
+  mutate(across(
+    c(py_70_75, case_70_75, py_75_80, case_75_80,
+      py_80_85, case_80_85, py_85_90, case_85_90,
+      py_90_95, case_90_95, py_95_120, case_95_120),
+    ~ .x * mwgtr,
+    .names = "weighted_{.col}"
+  ))
+```
+
+
+
+```{r}
+#Obtain the standard population to calculate the age-adjusted incidence rate
+std_pop_dp <- c(8857441, 7415813, 4945367, 2789818, 1112531, 337238)
+std_pop_hudomiet <- c(9533545, 8857441, 7415813, 4945367, 2789818, 1112531, 337238)
+std_pop_langa <- c(17585548, 13469237, 10805447, 9533545, 8857441, 7415813, 4945367, 2789818, 1112531, 337238)
+std_pop_memimp <- c(8857441, 7415813, 4945367, 2789818, 1112531, 337238)
+
+#Calculate unweighted irs stratified by race/ethnicity using calculate_ir
+IR_temp_langa <- calculate_ir(
+  data = df_pys_langa,
+  age_cat_labels = sex_gender_pys_langa$age_cat_labels,
+  std_pop = std_pop_langa,
+  per_pys = 1000,
+  ethnicity_var ="race_ethnicity_f"
+)
+
+
+IR_temp_langa <- calculate_ir(
+  data = df_pys_langa,
+  age_cat_labels = sex_gender_pys_langa$age_cat_labels,
+  std_pop_langa,
+  per_pys = 1000,
+  ethnicity_var ="race_ethnicity_f"
+)
+
+IR_temp_memimp <- calculate_ir(
+  data = df_pys_memimp,
+  age_cat_labels = sex_gender_pys_memimp$age_cat_labels,
+  std_pop_memimp,
+  per_pys = 1000,
+  ethnicity_var ="race_ethnicity_f"
+)
+
+IR_temp_dp<- calculate_ir(
+  data = df_pys_dp,
+  age_cat_labels = sex_gender_pys_dp$age_cat_labels,
+  std_pop_dp,
+  per_pys = 1000,
+  ethnicity_var ="race_ethnicity_f"
+)
+
+IR_temp_hudomiet <- calculate_ir(
+  data = df_pys_hudomiet,
+  age_cat_labels = sex_gender_pys_hudomiet$age_cat_labels,
+  std_pop_hudomiet,
+  per_pys = 1000,
+  ethnicity_var ="race_ethnicity_f"
+)
+
+```
+
+
+```{r}
+# Calculate Age-specific IRs, Age-adjusted IR, and Crude IR stratified by race/ethnicity
+# Confidence intervals are computed via bootstrap
+# For each group:
+# - It resamples the data R times (with replacement)
+# - Computes IRs for each resampled dataset
+# - Uses the bootstrap percentile method to construct 95% confidence intervals
+calc_weighted_irs <- function(data, indices, age_cat_labels, std_pop) {
+  # Subset data based on bootstrap indices
+  d <- data[indices, ]
+  
+  # Calculate age-specific weighted person-years and cases
+  age_spec <- tibble(
+    age_range = age_cat_labels,
+    pop_count = std_pop,
+    pop_total = sum(std_pop),
+    pop_prop = std_pop / pop_total,
+    weighted_pys = sapply(age_cat_labels, function(cat) sum(d[[paste0("weighted_py_", cat)]], na.rm = TRUE)),
+    weighted_cases = sapply(age_cat_labels, function(cat) sum(d[[paste0("weighted_case_", cat)]], na.rm = TRUE))
+  ) %>%
+    mutate(
+      weighted_adj_ir = weighted_cases / weighted_pys
+    )
+  
+  crude_ir <- sum(age_spec$weighted_cases) / sum(age_spec$weighted_pys)
+  age_adj_ir <- sum(age_spec$weighted_adj_ir * age_spec$pop_prop, na.rm=TRUE) 
+  
+  return(c(age_spec$weighted_adj_ir, crude_ir, age_adj_ir))
+}
+
+
+bootstrap_weighted_ir <- function(data, age_cat_labels, std_pop, R, per_pys, seed) {
+  # Split data by race_ethnicity
+  data_split <- data %>% split(., .$race_ethnicity_f)
+  
+  # Apply bootstrapping for each racial/ethnic group
+  out <- lapply(data_split, function(x) {
+    set.seed(seed)
+    
+    # Perform bootstrap
+    boot_res <- boot(
+      data = x,
+      statistic = function(d, i) calc_weighted_irs(d, i, age_cat_labels, std_pop),
+      R = R
+    )
+    
+    age_spec_df <- data.frame(
+      age_range = age_cat_labels,
+      weighted_cases = sapply(age_cat_labels, function(cat) sum(x[[paste0("weighted_case_", cat)]], na.rm = TRUE)),
+      weighted_pys= sapply(age_cat_labels, function(cat) sum(x[[paste0("weighted_py_",cat)]], na.rm = TRUE))
+    )
+    
+    ir_vals <- boot_res$t0[1:length(age_cat_labels)] * per_pys
+    
+    # Compute 95% CI for each age-specific IR using percentile method
+    ci_mat <- t(sapply(seq_along(age_cat_labels), function(i) {
+      if ( age_spec_df$weighted_cases[i] == 0 || age_spec_df$weighted_pys[i] == 0 ) {
+        c(lcl = NA, ucl = NA)
+      } 
+      else {
+        bci <- boot.ci(boot_res, type = "perc", index = i)$percent[4:5]
+        c(lcl = bci[1] * per_pys, ucl = bci[2] * per_pys)
+      }
+    }))
+    
+    age_spec_df$weighted_adj_ir<- ir_vals
+    age_spec_df$weighted_adj_ir_CI_l <- ci_mat[, "lcl"]
+    age_spec_df$weighted_adj_ir_CI_u <- ci_mat[, "ucl"]
+    
+    age_spec_df$IR <- ifelse(
+      is.na(age_spec_df$weighted_adj_ir), NA,
+      sprintf("%.1f (%.1f, %.1f)",
+          age_spec_df$weighted_adj_ir,
+          age_spec_df$weighted_adj_ir_CI_l,
+          age_spec_df$weighted_adj_ir_CI_u)
+    )
+    
+    # Compute crude and age-adjusted IRs and their bootstrap CIs
+    total_weighted_cases <- sum(age_spec_df$weighted_cases, na.rm = TRUE)
+    total_weighted_pys   <- sum(age_spec_df$weighted_pys, na.rm = TRUE)
+    bci_crude <- boot.ci(boot_res, type = "perc", index = length(age_cat_labels) + 1)
+    bci_adj <- boot.ci(boot_res, type = "perc", index = length(age_cat_labels) + 2)
+    
+    
+    age_adj_df <- data.frame(
+      weighted_cases = total_weighted_cases,
+      weighted_pys  = total_weighted_pys,
+      crude_ir = boot_res$t0[length(age_cat_labels) + 1] * per_pys,
+      crude_ir_l = bci_crude$percent[4] * per_pys,
+      crude_ir_u = bci_crude$percent[5] * per_pys,
+      adj_ir= boot_res$t0[length(age_cat_labels) + 2] * per_pys,
+      adj_ir_l= bci_adj$percent[4] * per_pys,
+      adj_ir_u= bci_adj$percent[5] * per_pys
+    )
+    
+    list(age_spec = age_spec_df, age_adj = age_adj_df)
+  })
+  
+  return(out)
+}
+```
+
+
+```{r}
+#apply bootstrap_weighted_ir to weighted data
+#langa
+ir_bootstrap_results_langa <- bootstrap_weighted_ir(
+  data = weighted_df_pys_langa,
+  age_cat_labels = sex_gender_pys_langa$age_cat_labels,
+  std_pop = std_pop_langa,
+  R = 1000,
+  per_pys = 1000,
+  seed=123
+)
+
+#memimp
+ir_bootstrap_results_memimp <- bootstrap_weighted_ir(
+  data = weighted_df_pys_memimp,
+  age_cat_labels = sex_gender_pys_memimp$age_cat_labels,
+  std_pop = std_pop_memimp,
+  R = 1000,
+  per_pys = 1000,
+  seed=123
+)
+
+#dp
+ir_bootstrap_results_dp <- bootstrap_weighted_ir(
+  data = weighted_df_pys_dp,
+  age_cat_labels = sex_gender_pys_dp$age_cat_labels,
+  std_pop = std_pop_dp,
+  R = 1000,
+  per_pys = 1000,
+  seed=123
+)
+
+#hudomiet
+ir_bootstrap_results_hudomiet <- bootstrap_weighted_ir(
+  data = weighted_df_pys_hudomiet,
+  age_cat_labels = sex_gender_pys_hudomiet$age_cat_labels,
+  std_pop = std_pop_hudomiet,
+  R = 1000,
+  per_pys = 1000,
+  seed=123
+)
+
+```
+
+
+```{r}
+##---- functions to formatting tables ----
+unweighted_age_spec_ir_table_by_ethnicity <- function(IR_data) {
+  bind_rows(
+    lapply(names(IR_data), function(group) {
+      x <- IR_data[[group]]
+      out <- x$age_spec %>%
+        mutate(
+          age_spec_ir = ifelse(
+            unw_cases < 5, 
+            "< 5 events",
+            paste0(sprintf(unw_adj_ir, fmt = "%.2f"), " (",
+                   sprintf(unw_adj_ir_CI_l, fmt = "%.2f"), ", ",
+                   sprintf(unw_adj_ir_CI_u, fmt = "%.2f"), ")")
+          ),
+          `Race and ethnicity` = group
+        ) %>%
+        select(`Race and ethnicity`, age_range, unw_cases, unw_pys, age_spec_ir)
+      
+      colnames(out) <- c("Race and ethnicity", "Age range", "Cases", "Person-Years", "IR (95% CI)")
+      return(out)
+    })
+  )
+}
+
+result_unweighted_langa_age_spec <- unweighted_age_spec_ir_table_by_ethnicity(IR_temp_langa)
+result_unweighted_memimp_age_spec <- unweighted_age_spec_ir_table_by_ethnicity(IR_temp_memimp)
+result_unweighted_dp_age_spec <- unweighted_age_spec_ir_table_by_ethnicity(IR_temp_dp)
+result_unweighted_hudomiet_age_spec <- unweighted_age_spec_ir_table_by_ethnicity(IR_temp_hudomiet)
+
+
+
+unweighted_age_adj_ir_table_by_ethnicity <- function(IR_data) {
+  bind_rows(
+    lapply(names(IR_data), function(group) {
+      x <- IR_data[[group]]
+      out <- x$age_adj %>%
+        mutate(
+          `Race and ethnicity` = group,
+          `Crude IR (95% CI)` = paste0(sprintf(crude_ir, fmt = "%.2f"), " (",
+                                       sprintf(crude_ir_l, fmt = "%.2f"), ", ",
+                                       sprintf(crude_ir_u, fmt = "%.2f"), ")"),
+          `Age-adjusted IR (95% CI)` = paste0(sprintf(adj_ir, fmt = "%.2f"), " (",
+                                              sprintf(adj_ir_l, fmt = "%.2f"), ", ",
+                                              sprintf(adj_ir_u, fmt = "%.2f"), ")")
+        ) %>%
+        select(`Race and ethnicity`, unw_cases, unw_pys, 
+               `Crude IR (95% CI)`, `Age-adjusted IR (95% CI)`)
+
+      colnames(out) <- c("Race and ethnicity", "Cases", "Person-Years", 
+                         "Crude IR (95% CI)", "Age-standardized IR (95% CI)")
+      return(out)
+    })
+  )
+}
+
+
+result_unweighted_langa_age_adj <- unweighted_age_adj_ir_table_by_ethnicity(IR_temp_langa)
+result_unweighted_memimp_age_adj <- unweighted_age_adj_ir_table_by_ethnicity(IR_temp_memimp)
+result_unweighted_dp_age_adj <- unweighted_age_adj_ir_table_by_ethnicity(IR_temp_dp)
+result_unweighted_hudomiet_age_adj <- unweighted_age_adj_ir_table_by_ethnicity(IR_temp_hudomiet)
+
+
+
+weighted_age_spec_ir_table_by_ethnicity <- function(IR_data) {
+  bind_rows(
+    lapply(names(IR_data), function(group) {
+      x <- IR_data[[group]]
+      out <- x$age_spec %>%
+        mutate(
+          weighted_age_spec_ir = ifelse(
+            weighted_cases < 5, 
+            "< 5 events",
+            paste0(sprintf(weighted_adj_ir, fmt = "%.2f"), " (",
+                   sprintf(weighted_adj_ir_CI_l, fmt = "%.2f"), ", ",
+                   sprintf(weighted_adj_ir_CI_u, fmt = "%.2f"), ")")
+          ),
+          `Race and ethnicity` = group
+        ) %>%
+        select(`Race and ethnicity`, age_range, weighted_cases, weighted_pys, weighted_age_spec_ir)
+      
+      colnames(out) <- c("Race and ethnicity", "Age range", "Cases", "Person-Years", "IR (95% CI)")
+      rownames(out) <- NULL
+      return(out)
+    })
+  )
+}
+
+
+result_weighted_langa_age_spec <- weighted_age_spec_ir_table_by_ethnicity(ir_bootstrap_results_langa)
+result_weighted_memimp_age_spec <- weighted_age_spec_ir_table_by_ethnicity(ir_bootstrap_results_memimp)
+result_weighted_dp_age_spec <- weighted_age_spec_ir_table_by_ethnicity(ir_bootstrap_results_dp)
+result_weighted_hudomiet_age_spec <- weighted_age_spec_ir_table_by_ethnicity(ir_bootstrap_results_hudomiet)
+
+
+
+weighted_age_adj_ir_table_by_ethnicity <- function(IR_data) {
+  bind_rows(
+    lapply(names(IR_data), function(group) {
+      x <- IR_data[[group]]
+      out <- x$age_adj %>%
+        mutate(
+          `Race and ethnicity` = group,
+          `Crude IR (95% CI)` = paste0(sprintf(crude_ir, fmt = "%.2f"), " (",
+                                       sprintf(crude_ir_l, fmt = "%.2f"), ", ",
+                                       sprintf(crude_ir_u, fmt = "%.2f"), ")"),
+          `Age-adjusted IR (95% CI)` = paste0(sprintf(adj_ir, fmt = "%.2f"), " (",
+                                              sprintf(adj_ir_l, fmt = "%.2f"), ", ",
+                                              sprintf(adj_ir_u, fmt = "%.2f"), ")")
+        ) %>%
+        select(`Race and ethnicity`, weighted_cases, weighted_pys, 
+               `Crude IR (95% CI)`, `Age-adjusted IR (95% CI)`)
+
+      colnames(out) <- c("Race and ethnicity", "Cases", "Person-Years", 
+                         "Crude IR (95% CI)", "Age-standardized IR (95% CI)")
+      return(out)
+    })
+  )
+}
+
+
+result_weighted_langa_age_adj <- weighted_age_adj_ir_table_by_ethnicity(ir_bootstrap_results_langa)
+result_weighted_memimp_age_adj <- weighted_age_adj_ir_table_by_ethnicity(ir_bootstrap_results_memimp)
+result_weighted_dp_age_adj <- weighted_age_adj_ir_table_by_ethnicity(ir_bootstrap_results_dp)
+result_weighted_hudomiet_age_adj <- weighted_age_adj_ir_table_by_ethnicity(ir_bootstrap_results_hudomiet)
+```
+
+
+```{r}
+lst_unwt_spec_eth <- list(
+  Langa_Weir = result_unweighted_langa_age_spec,
+  Hudomiet   = result_unweighted_hudomiet_age_spec,
+  Wu         = result_unweighted_memimp_age_spec, 
+  Expert     = result_unweighted_dp_age_spec
+)
+
+all_unweighted_age_spec_by_ethnicity_wide <- imap(lst_unwt_spec_eth, function(df, nm) {
+  df %>%
+    mutate(row_id = row_number()) %>%
+    rename_with(~ paste(nm, ., sep = "_"), -row_id)
+}) %>%
+  reduce(full_join, by = "row_id") %>%
+  select(-row_id)
+
+# write.csv(
+#   all_unweighted_age_spec_by_ethnicity_wide,
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_unweighted_age_spec_by_ethnicity_wide.csv",
+#   row.names = FALSE
+# )
+```
+
+
+```{r}
+lst_unwt_adj_eth <- list(
+  Langa_Weir = result_unweighted_langa_age_adj,
+  Hudomiet   = result_unweighted_hudomiet_age_adj,
+  Wu         = result_unweighted_memimp_age_adj,
+  Expert     = result_unweighted_dp_age_adj
+)
+
+all_unweighted_age_adj_by_ethnicity_wide <- imap(lst_unwt_adj_eth, function(df, nm) {
+  df %>%
+    mutate(row_id = row_number()) %>%
+    rename_with(~ paste(nm, ., sep = "_"), -row_id)
+}) %>%
+  reduce(full_join, by = "row_id") %>%
+  select(-row_id)
+
+# write.csv(
+#   all_unweighted_age_adj_by_ethnicity_wide,
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_unweighted_age_adj_by_ethnicity_wide.csv",
+#   row.names = FALSE
+# )
+```
+
+
+```{r}
+lst_wt_spec_eth <- list(
+  Langa_Weir = result_weighted_langa_age_spec,
+  Hudomiet   = result_weighted_hudomiet_age_spec,
+  Wu         = result_weighted_memimp_age_spec,
+  Expert     = result_weighted_dp_age_spec
+)
+
+all_weighted_age_spec_by_ethnicity_wide <- imap(lst_wt_spec_eth, function(df, nm) {
+  df %>%
+    mutate(row_id = row_number()) %>%
+    rename_with(~ paste(nm, ., sep = "_"), -row_id)
+}) %>%
+  reduce(full_join, by = "row_id") %>%
+  select(-row_id)
+
+# write.csv(
+#   all_weighted_age_spec_by_ethnicity_wide,
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_weighted_age_spec_by_ethnicity_wide.csv",
+#   row.names = FALSE
+# )
+```
+
+
+```{r}
+lst_wt_adj_eth <- list(
+  Langa_Weir = result_weighted_langa_age_adj,
+  Hudomiet   = result_weighted_hudomiet_age_adj,
+  Wu         = result_weighted_memimp_age_adj,
+  Expert     = result_weighted_dp_age_adj
+)
+
+all_weighted_age_adj_by_ethnicity_wide <- imap(lst_wt_adj_eth, function(df, nm) {
+  df %>%
+    mutate(row_id = row_number()) %>%
+    rename_with(~ paste(nm, ., sep = "_"), -row_id)
+}) %>%
+  reduce(full_join, by = "row_id") %>%
+  select(-row_id)
+
+# write.csv(
+#   all_weighted_age_adj_by_ethnicity_wide,
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_weighted_age_adj_by_ethnicity_wide.csv",
+#   row.names = FALSE
+# )
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

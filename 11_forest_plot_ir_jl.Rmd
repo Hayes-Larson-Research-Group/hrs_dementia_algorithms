@@ -1,0 +1,388 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-03-23"
+---
+
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+df <- read.csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_age_spec_wide.csv")
+```
+
+
+```{r}
+df_long <- bind_rows(
+  df %>%
+    transmute(age = Langa_Weir_Age.range,
+              category = "Langa-Weir",
+              ir = Langa_Weir_IR..95..CI.),
+  
+  df %>%
+    transmute(age = Hudomiet_Age.range,
+              category = "Hudomiet",
+              ir = Hudomiet_IR..95..CI.),
+  
+  df %>%
+    transmute(age = Wu_Age.range,
+              category = "Wu",
+              ir = Wu_IR..95..CI.),
+  
+  df %>%
+    transmute(age = Expert_Age.range,
+              category = "Expert",
+              ir = Expert_IR..95..CI.)
+) %>%
+  filter(!is.na(age), age != "NA")
+
+df_long <- df_long %>%
+  filter(age %in% c("70_75", "75_80", "80_85", "85_90", "90_95", "95_120"))
+```
+
+
+```{r}
+df_plot <- df_long %>%
+  mutate(
+    point = as.numeric(str_extract(ir, "^[0-9.]+")),
+    low   = as.numeric(str_extract(ir, "(?<=\\()[0-9.]+")),
+    high  = as.numeric(str_extract(ir, "(?<=, )[0-9.]+")),
+    
+    age = recode(age,
+                 "70_75" = "[70–75)",
+                 "75_80" = "[75–80)",
+                 "80_85" = "[80–85)",
+                 "85_90" = "[85–90)",
+                 "90_95" = "[90–95)",
+                 "95_120" = "95+")
+  ) %>%
+  select(age, category, point, low, high) %>%
+  arrange(age, category)
+
+ir <- df_plot %>%
+  mutate(
+    age = factor(age, levels = c("[70–75)","[75–80)","[80–85)","[85–90)","[90–95)","95+")),
+    category = factor(category, levels = c("Langa-Weir","Hudomiet","Expert","Wu"))
+  )
+```
+
+
+```{r}
+### Date: 2025-11-04 ----
+pal4 <- c(
+  "Langa-Weir" = "#648FFF",
+  "Hudomiet"   = "#DC267F",
+  "Expert"     = "#E69F00",
+  "Wu"         = "#00A08A"
+)
+
+# shapes: diamond=23, square=22, triangle=24, circle=21
+shape4 <- c(
+  "Langa-Weir" = 23,
+  "Hudomiet"   = 22,
+  "Expert"     = 24,
+  "Wu"         = 21
+)
+
+# Match point size to HR figure (larger, poster-friendly)
+size4 <- c(
+  "Langa-Weir" = 2.0,
+  "Hudomiet"   = 2.0,
+  "Expert"     = 2.0,
+  "Wu"         = 2.0
+)
+
+# y-axis range
+y_min <- floor(min(ir$low, na.rm = TRUE) / 5) * 5
+y_max <- ceiling(max(ir$high, na.rm = TRUE) / 5) * 5
+
+pos <- position_dodge(width = 0.3)
+
+p_ir <- ggplot(
+  ir,
+  aes(
+    x     = age,
+    y     = point,
+    ymin  = low,
+    ymax  = high,
+    color = category,
+    group = category
+  )
+) +
+  # Connecting lines (thicker to match HR error bars)
+  geom_line(position = pos, linewidth = 1.2, alpha = 0.4) +
+  
+  # CIs (thicker error bars)
+  geom_errorbar(
+    aes(group = category),
+    width    = 0.2,
+    size     = 1.4,     # ↑ similar to HR fig
+    position = pos
+  ) +
+  
+  # Points: larger, with stroke for better visibility
+  geom_point(
+    aes(shape = category, fill = category, size = category),
+    position = pos,
+    stroke   = 1        # outline thickness
+  ) +
+  
+  scale_y_continuous(
+    limits = c(y_min, y_max),
+    breaks = scales::pretty_breaks(n = 8),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  scale_color_manual(values = pal4, name = NULL) +
+  scale_fill_manual(values = pal4, guide = "none") +
+  scale_shape_manual(values = shape4, name = NULL) +
+  scale_size_manual(values = size4, guide = "none") +
+  theme_bw() +
+  labs(
+    x = "Age (years)",
+    y = "Incidence rate (95% CI)"
+  ) +
+  theme(
+    legend.position   = "bottom",
+    panel.grid.minor  = element_blank(),
+    axis.text         = element_text(size = 15, face = "bold"),
+    axis.title        = element_text(size = 20, face = "bold"),
+    legend.text       = element_text(size = 18),
+    legend.title      = element_text(size = 18),
+    plot.title        = element_text(size = 18, face = "bold", hjust = 0.5),
+    strip.text        = element_text(size = 13)
+  )
+
+p_ir
+
+
+
+```
+
+
+
+
+
+
+```{r}
+ggsave(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Manuscript/Output/figure2_unweighted_ir_plot.pdf",
+  p_ir,
+  width  = 10,
+  height = 11,
+  bg     = "white"
+)
+```
+
+
+```{r}
+df <- read_csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_unweighted_age_spec_by_ethnicity_wide.csv")
+```
+
+
+```{r}
+df_long <- bind_rows(
+  df %>%
+    transmute(
+      race = `Langa_Weir_Race and ethnicity`,
+      age = `Langa_Weir_Age range`,
+      ir = `Langa_Weir_IR (95% CI)`,
+      category = "Langa-Weir"
+    ),
+  
+  df %>%
+    transmute(
+      race = `Hudomiet_Race and ethnicity`,
+      age = `Hudomiet_Age range`,
+      ir = `Hudomiet_IR (95% CI)`,
+      category = "Hudomiet"
+    ),
+  
+  df %>%
+    transmute(
+      race = `Wu_Race and ethnicity`,
+      age = `Wu_Age range`,
+      ir = `Wu_IR (95% CI)`,
+      category = "Wu"
+    ),
+  
+  df %>%
+    transmute(
+      race = `Expert_Race and ethnicity`,
+      age = `Expert_Age range`,
+      ir = `Expert_IR (95% CI)`,
+      category = "Expert"
+    )
+) %>%
+  filter(
+    !is.na(race), race != "NA",
+    !is.na(age),  age != "NA",
+    !is.na(ir),   ir != "NA"
+  ) %>%
+  select(age, category, ir, race)
+
+df_long
+```
+
+
+```{r}
+df_long <- df_long %>%
+  filter(ir != "< 5 events")
+```
+
+```{r}
+df_long <- df_long %>%
+  filter(age %in% c("70_75", "75_80", "80_85", "85_90", "90_95", "95_120"))
+```
+
+
+```{r}
+df_plot <- df_long %>%
+  mutate(
+    point = as.numeric(str_extract(ir, "^[0-9.]+")),
+    low   = as.numeric(str_extract(ir, "(?<=\\()[0-9.]+")),
+    high  = as.numeric(str_extract(ir, "(?<=, )[0-9.]+")),
+    
+    age = recode(age,
+                "70_75" = "[70–75)",
+                 "75_80" = "[75–80)",
+                 "80_85" = "[80–85)",
+                 "85_90" = "[85–90)",
+                 "90_95" = "[90–95)",
+                 "95_120" = "95+")
+  ) %>%
+  select(age, category, point, low, high,race) %>%
+  arrange(age, category)
+
+ci_ceiling <- 700
+
+ir <- df_plot %>%
+  mutate(
+    age = factor(age, levels = c("[70–75)","[75–80)","[80–85)","[85–90)","[90–95)","95+")),
+    category = factor(category, levels = c("Langa-Weir","Hudomiet","Expert","Wu")),
+    race = factor(race, levels = c("NH White", "NH Black", "Hispanic", "NH Other")),
+  
+    upper_trunc = high > ci_ceiling,
+    high_plot = ifelse(high > ci_ceiling, ci_ceiling, high)
+  )
+```
+
+
+```{r}
+ir <- ir %>%
+  filter(race != "NH Other")
+```
+
+
+
+```{r}
+pal4 <- c(
+  "Langa-Weir" = "#648FFF",
+  "Hudomiet"   = "#DC267F",
+  "Expert"     = "#E69F00",
+  "Wu"         = "#00A08A"
+)
+
+shape4 <- c(
+  "Langa-Weir" = 16,
+  "Hudomiet"   = 17,
+  "Expert"     = 15,
+  "Wu"         = 18
+)
+
+```
+
+
+
+```{r}
+pos <- position_dodge(width = 0.3)
+
+y_min <- floor(min(ir$low, na.rm = TRUE) / 5) * 5
+y_max <- ci_ceiling+ 20
+
+p_ir <- ggplot(
+  ir,
+  aes(
+    x = age,
+    y = point,
+    ymin = low,
+    ymax = high_plot,  
+    colour = category,
+    shape = category,
+    group = category
+  )
+) +
+  geom_line(
+    position = pos,
+    linewidth = 1.2,
+    alpha = 0.4
+  ) +
+  geom_errorbar(
+    position = pos,
+    width = 0.20,
+    linewidth = 1.2
+  ) +
+  geom_point(
+    position = pos,
+    size = 2.8,
+    stroke = 1.2
+  ) +
+geom_point(
+  data = ir %>% filter(upper_trunc),
+  aes(
+    x = age,
+    y = ci_ceiling
+  ),
+  shape = 24,
+  size = 7,
+  stroke = 1.2,
+  fill = "#00A08A",     
+  colour = "#00A08A",   
+  position = pos,
+  inherit.aes = FALSE,
+  show.legend = FALSE
+) +
+
+  facet_wrap(~ race, ncol = 3) +
+  scale_y_continuous(
+    limits = c(y_min, y_max),
+    breaks = scales::pretty_breaks(n = 8),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  scale_color_manual(values = pal4, name = NULL) +
+  scale_shape_manual(values = shape4, name = NULL) +
+  labs(
+    x = "Age (years)",
+    y = "Incidence rate (95% CI)"
+  ) +
+  theme_bw() +
+  theme(
+    legend.position  = "bottom",
+    axis.text        = element_text(size = 20, face = "bold"),
+    axis.title       = element_text(size = 32, face = "bold"),
+    legend.text      = element_text(size = 20),
+    legend.title     = element_text(size = 20),
+    strip.text       = element_text(size = 16, face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+p_ir
+
+p_ir
+```
+
+
+```{r}
+ggsave(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/unweighted_ir_plot_stratified_3_23.png",
+  p_ir,
+  width  = 22,
+  height = 12,
+  bg     = "white"
+)
+```
+
+
+

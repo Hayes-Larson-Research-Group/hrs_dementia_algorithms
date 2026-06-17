@@ -1,0 +1,367 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-08-18"
+---
+
+# Package loading
+
+```{r}
+rm(list = ls())
+
+if (!require("pacman")){
+  install.packages("pacman", repos='http://cran.us.r-project.org')
+}
+
+p_load(
+  "survival", "ggsurvfit", "survminer",
+  "dplyr", "haven", "stringr", "purrr", "broom",
+  "ggplot2","here","survey","tidyr"
+)
+```
+
+# Load the datasets
+
+```{r}
+source(here::here("0_paths_jl.R"))
+
+dt_analysis_age70 <- readRDS(here(
+  path_to_data,
+  "dt_analysis_age70.rds"
+))
+
+source(here::here("function_jl.R"))
+
+
+#Split the data by each algorithm
+#convert variable type to factor
+#apply the factor function after stratifying by algorithm, because of the race_ethnicity variable
+dt_analysis_age70_langa <-dt_analysis_age70%>%
+  filter(algorithm=="lw")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_hudomiet <-dt_analysis_age70%>%
+  filter(algorithm=="hudomiet")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_dp <-dt_analysis_age70%>%
+  filter(algorithm=="expert")%>%
+  recode_for_gtsum()
+
+dt_analysis_age70_memimp <-dt_analysis_age70%>%
+  filter(algorithm=="wu")%>%
+  recode_for_gtsum()
+```
+
+
+# Create weighted plot data
+```{r}
+#generate survey designs and perform weighted Kaplan-Meier analysis for each dataset
+data_map <- c(
+  dt_analysis_age70_langa    = "langa",
+  dt_analysis_age70_hudomiet = "hudomiet",
+  dt_analysis_age70_dp       = "dp",
+  dt_analysis_age70_memimp   = "memimp"
+)
+
+#Create survey design objects
+for (full_name in names(data_map)) {
+  algorithm_name <- data_map[[full_name]]
+  
+  svy_obj <- svydesign(
+    ids = ~secu,
+    strata = ~stratum,
+    weights = ~mwgtr,
+    data = get(full_name),
+    nest = TRUE
+  )
+  
+  assign(paste0("svy_", algorithm_name), svy_obj)
+}
+
+
+#Run svykm models
+for (full_name in names(data_map)) {
+  algorithm_name <- data_map[[full_name]]
+  
+  svy_obj <- get(paste0("svy_", algorithm_name))
+  
+  fit_obj <- svykm(
+    Surv(time_from_2010, event_dementia) ~ race_ethnicity_f,
+    design = svy_obj
+  )
+  
+  assign(paste0("fit_svy_", algorithm_name), fit_obj)
+}
+
+# Extract survival probability into data frames
+for (full_name in names(data_map)) {
+  algorithm_name <- data_map[[full_name]]
+  fit_obj <- get(paste0("fit_svy_", algorithm_name))
+  
+  df <- imap_dfr(fit_obj, ~{
+    tibble(
+      time = .x$time,
+      surv = .x$surv,
+      race_ethnicity = .y
+    )
+  })
+  
+  assign(paste0("df_fit_svy_", algorithm_name), df)
+}
+
+
+#Convert the race/ethnicity variable to factor so that the race-specific colors remain consistent in the KM curves
+weighted_data_names <- c(
+  "df_fit_svy_langa",
+  "df_fit_svy_dp",
+  "df_fit_svy_memimp",
+  "df_fit_svy_hudomiet"
+)
+
+race_levels <- list(
+  langa = c("Hispanic", "NH White", "NH Black", "NH Other"),
+  dp = c("Hispanic", "NH White", "NH Black"),
+  memimp = c("NH White", "NH Black", "NH Other"),
+  hudomiet = c("Hispanic", "NH White", "NH Black", "NH Other")
+)
+
+for (i in seq_along(weighted_data_names)) {
+  df <- get(weighted_data_names[i])
+  short_name <- sub("df_fit_svy_", "", weighted_data_names[i])
+  
+  df <- df %>%
+    mutate(race_ethnicity_f = factor(race_ethnicity, levels = race_levels[[short_name]]))
+  
+  assign(weighted_data_names[i], df)
+}
+
+```
+
+
+
+
+# KM curve
+## weighted KM curve
+```{r}
+#weighted km curve stratified by race_ethnicity and algorithm
+color_vals <- c(
+  "Hispanic" = "blue",
+  "NH Black" = "orange",
+  "NH White" = "green",
+  "NH Other" = "red"
+)
+
+
+algorithm_labels <- list(
+  langa = "Langa-Weir",
+  dp = "Expert",
+  memimp = "Wu",
+  hudomiet = "Hudomiet"
+)
+
+
+plot_list <- list()
+
+for (i in seq_along(weighted_data_names)) {
+  df <- get(weighted_data_names[i])
+  short_name <- sub("df_fit_svy_", "", weighted_data_names[i])
+
+  p <- ggplot(df, aes(x = time, y = surv, color = race_ethnicity_f)) +
+    geom_step(linewidth = 1) +
+    scale_color_manual(
+      name = "Race and Ethnicity",
+      values = color_vals
+    ) +
+    scale_x_continuous(breaks = seq(0, 10, 2)) +
+    labs(
+      title = paste("Weighted KM Curve -", algorithm_labels[[short_name]]),
+      x = "Years since 2010",
+      y = "Survival Probability"
+    ) +
+    coord_cartesian(ylim = c(0.4, 1)) +
+    theme_minimal(base_size = 14)
+
+  plot_list[[short_name]] <- p
+}
+
+plot_list
+```
+
+## weighted km curve facet plot
+
+```{r}
+#Combine the survival probability results
+combined_df <- bind_rows(
+  lapply(weighted_data_names, function(name) {
+    df <- get(name)
+    short_name <- sub("df_fit_svy_", "", name)
+    
+    algorithm_label <- c(
+      langa    = "Langa-Weir",
+      dp       = "Expert",
+      memimp   = "Wu",
+      hudomiet = "Hudomiet"
+    )
+    
+    df$dataset <- algorithm_label[short_name]
+    return(df)
+  })
+)
+
+
+
+
+#combined plot for weighted km curve stratified by race_ethnicity and algorithm
+p<-ggplot(combined_df, aes(x = time, y = surv, color = race_ethnicity_f)) +
+  geom_step(linewidth = 1) +
+  scale_color_manual(
+    name   = "Race and Ethnicity",
+    values = color_vals
+  ) +
+  scale_x_continuous(breaks = seq(0, 10, 2)) +
+  labs(
+    title = "Weighted KM Curves by Algorithm and Race/Ethnicity",
+    x = "Years since 2010",
+    y = "Survival Probability"
+  ) +
+  coord_cartesian(ylim = c(0.4, 1)) +
+  theme_minimal() +
+  facet_wrap(
+  ~ dataset)
+
+p
+
+# ggsave(
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/Weighted KM Curves by Algorithm and Race 12-12.png",
+#   plot = p,
+#   bg = "white")
+```
+
+
+
+## Unweighted km curve
+
+```{r}
+#unweighted km curve stratified by race_ethnicity and algorithm
+data_names <- c(
+  "dt_analysis_age70_langa",
+  "dt_analysis_age70_hudomiet",
+  "dt_analysis_age70_dp",
+  "dt_analysis_age70_memimp"
+)
+
+km_plot_list <- list()
+
+for (name in data_names) {
+  df <- get(name)
+  short_name <- sub("dt_analysis_age70_", "", name)
+
+  fit <- survfit(Surv(time_from_2010, event_dementia) ~ race_ethnicity_f, data = df)
+
+  p <- ggsurvplot(
+    fit,
+    data = df,
+    xlab = "Years since 2010",
+    ylab = "Survival Probability",
+    palette = c("green", "orange", "blue", "red"),
+    title = paste("KM Curve:", gsub("_", " ", short_name)),
+    surv.median.line = "none",
+    ggtheme = theme_minimal(),
+    break.x.by = 2,
+    xlim = c(0, 10),
+    ylim = c(0.4, 1),
+    legend.title = "Race and Ethnicity",
+    legend.labs = levels(df$race_ethnicity_f)
+  )
+
+  km_plot_list[[short_name]] <- p
+}
+
+km_plot_list
+```
+
+
+
+## unweighted km curve facet plot
+
+```{r}
+#Combine the survival probability results
+fit_list <- list()
+
+for (name in data_names) {
+  short_name <- sub("dt_analysis_age70_", "", name)
+  df <- get(name)
+
+  fit <- survfit(Surv(time_from_2010, event_dementia) ~ race_ethnicity_f, data = df)
+  fit_list[[short_name]] <- fit
+}
+
+algorithm_label <- c(
+  langa    = "Langa-Weir",
+  dp       = "Expert",
+  memimp   = "Wu",
+  hudomiet = "Hudomiet"
+)
+
+result_list <- lapply(names(fit_list), function(name) {
+  fit <- fit_list[[name]]
+  tidy_fit <- tidy(fit)
+  tidy_fit <- tidy_fit[, c("time", "estimate", "strata")]
+  names(tidy_fit) <- c("time", "surv", "race_ethnicity")
+  tidy_fit$race_ethnicity <- gsub("^race_ethnicity_f=", "", tidy_fit$race_ethnicity)
+  tidy_fit$dataset <- algorithm_label[name]
+  return(tidy_fit)
+})
+
+result_df <- bind_rows(result_list)
+
+
+#combined plot for unweighted km curve stratified by age,race_ethnicity and algorithm
+
+p2<-ggplot(result_df, aes(x = time, y = surv, color = race_ethnicity)) +
+  geom_step(linewidth = 1) +
+  scale_color_manual(
+    name   = "Race and Ethnicity",
+    values = color_vals
+  ) +
+  scale_x_continuous(breaks = seq(0, 10, 2)) +
+  labs(
+    title = "Unweighted KM Curves by Algorithm and Race/Ethnicity",
+    x = "Years since 2010",
+    y = "Survival Probability"
+  ) +
+  coord_cartesian(ylim = c(0.4, 1)) +
+  theme_minimal() +
+  facet_wrap(~ dataset)
+
+p2
+
+# ggsave(
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/Unweighted KM Curves by Algorithm and Race 12-12.png",
+#   plot = p2,
+#   bg = "white")
+```
+
+
+
+
+
+
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
