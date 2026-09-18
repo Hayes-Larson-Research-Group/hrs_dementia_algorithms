@@ -11,7 +11,7 @@ library(tidyverse)
 
 
 ```{r}
-df <- read.csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_age_spec_wide.csv")
+df <- read.csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/age_spec.csv")
 ```
 
 
@@ -81,10 +81,10 @@ pal4 <- c(
 
 # shapes: diamond=23, square=22, triangle=24, circle=21
 shape4 <- c(
-  "Langa-Weir" = 23,
-  "Hudomiet"   = 22,
-  "Expert"     = 24,
-  "Wu"         = 21
+  "Langa-Weir" = 21,
+  "Hudomiet"   = 24,
+  "Expert"     = 22,
+  "Wu"         = 23
 )
 
 # Match point size to HR figure (larger, poster-friendly)
@@ -162,13 +162,22 @@ p_ir
 ```
 
 
+```{r}
+ggsave(
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/unweighted_ir_plot.pdf",
+  p_ir,
+  width  = 10,
+  height = 11,
+  bg     = "white"
+)
+```
 
 
 
 
 ```{r}
 ggsave(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Manuscript/Output/figure2_unweighted_ir_plot.pdf",
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/unweighted_ir_plot.png",
   p_ir,
   width  = 10,
   height = 11,
@@ -178,7 +187,7 @@ ggsave(
 
 
 ```{r}
-df <- read_csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_unweighted_age_spec_by_ethnicity_wide.csv")
+df <- read_csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/age_spec_stratified_by_race_ethnicity.csv")
 ```
 
 
@@ -376,7 +385,7 @@ p_ir
 
 ```{r}
 ggsave(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/unweighted_ir_plot_stratified_3_23.png",
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/unweighted_ir_plot_stratified.png",
   p_ir,
   width  = 22,
   height = 12,

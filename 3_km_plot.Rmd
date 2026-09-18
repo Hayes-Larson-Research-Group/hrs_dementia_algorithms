@@ -93,19 +93,19 @@ p
 
 
 ggsave(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve_70plus_svy_3_24.pdf",
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve_weighted.png",
   plot = p,
   bg = "white"
 )
 
-ggsave(
-  filename = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Manuscript/figures for manuscript/Figure 1 weighted km plot.pdf",
-  plot = p,
-  width = 8,
-  height = 6,
-  units = "in",
-  bg = "white"
-)
+# ggsave(
+#   filename = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Manuscript/figures for manuscript/Figure 1 weighted km plot.pdf",
+#   plot = p,
+#   width = 8,
+#   height = 6,
+#   units = "in",
+#   bg = "white"
+# )
 ```
 
 
@@ -132,7 +132,7 @@ km_plot_70plus<-ggsurvplot(
 km_plot_70plus
 
 ggsave(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve_70plus_12_12.png",
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve.png",
   plot = km_plot_70plus$plot,
   bg = "white")
 ```

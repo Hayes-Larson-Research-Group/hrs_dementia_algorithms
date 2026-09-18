@@ -12,10 +12,10 @@ library(ggforestplot)
 # load dataset
 ```{r}
 # use weighted result to create plot
-weighted_main_result <- read.csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_weighted_12_12.csv")
+weighted_main_result <- read.csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_cox_results.csv")
 
 weighted_apoe_result <- read_csv(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_apoe.csv")
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_w_unw_apoe_variable.csv")
 ```
 
 
@@ -92,7 +92,7 @@ df_hr<-bind_rows(df_long,weighted_apoe_result_filter)
 ```{r}
 # write.csv(
 #   df_hr,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/df_hr_forest.csv",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_df_hr_main_result_and_apoe_variable_result.csv",
 #   row.names = FALSE
 # )
 ```
@@ -199,7 +199,7 @@ p_hr
 #sensitivity analysis(drop missing apoe for all models)
 ```{r}
 weighted_result_s <- read_csv(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_weighted_3_16_apoe.csv"
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_cox_results_apoe_sample.csv"
 )
 ```
 
@@ -253,7 +253,7 @@ df_hr_s<-bind_rows(df_long_s,weighted_apoe_result_filter)
 ```{r}
 # write.csv(
 #   df_hr_s,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/df_hr_forest_sensitivity.csv",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_df_hr_apoe_sample_and_apoe_variable.csv",
 #   row.names = FALSE
 # )
 ```
@@ -264,11 +264,11 @@ df_hr_s<-bind_rows(df_long_s,weighted_apoe_result_filter)
 
 ```{r}
 cox_results_apoe <- read_csv(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/result_table_stratified_apoe_3_19.csv"
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_w_unw_stratified_by_race_ethnicity_apoe_variable.csv"
 )
 
 result_table_stratified_weighted <- read_csv(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/result_table_stratified_weighted_12_12.csv"
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_cox_results_stratified_by_race_ethnicity.csv"
 )
 ```
 
@@ -349,7 +349,7 @@ df_stratified_all<-bind_rows(df_stratified_weighted_long,cox_results_apoe_filter
 ```{r}
 # write.csv(
 #   df_stratified_all,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/df_stratified_all.csv",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_df_hr_stratified_main_and_apoe_variable.csv",
 #   row.names = FALSE
 # )
 ```

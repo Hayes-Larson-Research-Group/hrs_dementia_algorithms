@@ -648,7 +648,7 @@ all_unweighted_age_spec_by_ethnicity_wide <- imap(lst_unwt_spec_eth, function(df
 
 # write.csv(
 #   all_unweighted_age_spec_by_ethnicity_wide,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_unweighted_age_spec_by_ethnicity_wide.csv",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/age_spec_stratified_by_race_ethnicity.csv",
 #   row.names = FALSE
 # )
 ```
@@ -672,7 +672,7 @@ all_unweighted_age_adj_by_ethnicity_wide <- imap(lst_unwt_adj_eth, function(df, 
 
 # write.csv(
 #   all_unweighted_age_adj_by_ethnicity_wide,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_unweighted_age_adj_by_ethnicity_wide.csv",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/age_adj_stratified_by_race_ethnicity.csv",
 #   row.names = FALSE
 # )
 ```
@@ -696,7 +696,7 @@ all_weighted_age_spec_by_ethnicity_wide <- imap(lst_wt_spec_eth, function(df, nm
 
 # write.csv(
 #   all_weighted_age_spec_by_ethnicity_wide,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_weighted_age_spec_by_ethnicity_wide.csv",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_age_spec_stratified_by_race_ethnicity.csv",
 #   row.names = FALSE
 # )
 ```
@@ -720,7 +720,7 @@ all_weighted_age_adj_by_ethnicity_wide <- imap(lst_wt_adj_eth, function(df, nm) 
 
 # write.csv(
 #   all_weighted_age_adj_by_ethnicity_wide,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_weighted_age_adj_by_ethnicity_wide.csv",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_age_adj_stratified_by_race_ethnicity.csv",
 #   row.names = FALSE
 # )
 ```

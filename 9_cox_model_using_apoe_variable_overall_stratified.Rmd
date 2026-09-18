@@ -207,7 +207,7 @@ for (i in seq_along(model_formulas)) {
 # 
 # 
 # write_excel_csv(cox_results,
-#                 file = file.path(output_dir, "cox_results_apoe.csv"))
+#                 file = file.path(output_dir, "cox_results_w_unw_apoe_variable.csv"))
 
 ```
 
@@ -360,7 +360,7 @@ for (model_name in names(model_formulas)) {
 ```{r}
 # output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
 # write_excel_csv(cox_results,
-#                 file = file.path(output_dir, "result_table_stratified_apoe_3_19.csv"))
+#                 file = file.path(output_dir, "cox_results_w_unw_stratified_by_race_ethnicity_apoe_variable.csv"))
 
 ```
 

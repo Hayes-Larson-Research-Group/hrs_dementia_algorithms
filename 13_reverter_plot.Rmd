@@ -208,6 +208,7 @@ colors <- c(
 state_order  <- attr(seq_def_langa, "alphabet")
 cpal_ordered <- colors[state_order] 
 
+file_path <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/seqIplot_langa_3cat.png"
 png(file_path, width = 10, height = 7, units = "in", res = 300)
 
 

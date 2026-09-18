@@ -607,7 +607,7 @@ all_age_spec_wide <- imap(lst, function(df, nm) {
 
 write.csv(
   all_age_spec_wide,
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_age_spec_wide_censor_2016.csv",
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/age_spec_censor_2016.csv",
   row.names = FALSE
 )
 ```
@@ -631,7 +631,7 @@ all_age_adj_wide <- imap(lst_adj, function(df, nm) {
 
 write.csv(
   all_age_adj_wide,
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_age_adj_wide_censor_2016.csv",
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/age_adj_censor_2016.csv",
   row.names = FALSE
 )
 ```
@@ -655,7 +655,7 @@ all_weighted_age_spec_wide <- imap(lst_wt_spec, function(df, nm) {
 
 write.csv(
   all_weighted_age_spec_wide,
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_weighted_age_spec_wide_censor_2016.csv",
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_age_spec_censor_2016.csv",
   row.names = FALSE
 )
 ```
@@ -681,7 +681,7 @@ all_weighted_age_adj_wide <- imap(lst_wt_adj, function(df, nm) {
 
 write.csv(
   all_weighted_age_adj_wide,
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/all_weighted_age_adj_wide_censor_2016.csv",
+  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_age_adj_censor_2016.csv",
   row.names = FALSE
 )
 ```

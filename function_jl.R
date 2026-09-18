@@ -15,8 +15,8 @@ recode_for_gtsum <- function(df, dataset_name = NULL) {
       ),
       event_type_f = factor(
         event_type,
-        levels = c("dementia", "death", "ltfu", "admin"),
-        labels = c("Dementia", "Death", "LTFU", "Administrative censoring")
+        levels = c("dementia", "death", "ltfu", "admin","dem_score_miss"),
+        labels = c("Dementia", "Death", "LTFU", "Administrative censoring","Missing dementia score")
       ),
       event_dementia_f = factor(
         event_dementia,

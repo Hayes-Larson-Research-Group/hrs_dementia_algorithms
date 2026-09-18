@@ -612,6 +612,17 @@ gap_base <- rand_long %>%
         if (length(resp) == 0) NA_real_ else max(resp)
       }
     },
+    
+    # first response after the gap, if they came back
+    first_return_year = {
+      if (is.na(first_gap_year)) {
+        NA_real_
+      } else {
+        resp_after <- year[is_resp & year > first_gap_year]
+        if (length(resp_after) == 0) NA_real_ else min(resp_after)
+      }
+    },
+    
     year_ltfu = last_resp_before_gap,   # same definition as before
     .groups = "drop"
   )
@@ -627,6 +638,14 @@ analysis_ready <- analysis_ready %>%
     admin_end_year = case_when(
       algorithm == "hudomiet"  ~ 2016,
       TRUE                     ~ 2020
+    ),
+    
+    # distinguish temporary interview gap from true LTFU
+    ltfu_type = case_when(
+      is.na(year_ltfu) ~ NA_character_,
+      !is.na(first_return_year) &
+        first_return_year <= admin_end_year ~ "gap",
+      TRUE ~ "ltfu"
     ),
     
     # treat missing years as Inf so they won't be the minimum

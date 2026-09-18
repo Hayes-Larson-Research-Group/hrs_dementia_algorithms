@@ -233,7 +233,7 @@ p<-ggplot(combined_df, aes(x = time, y = surv, color = race_ethnicity_f)) +
 p
 
 # ggsave(
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/Weighted KM Curves by Algorithm and Race 12-12.png",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve_weighted_stratified_race_ethnicity.png",
 #   plot = p,
 #   bg = "white")
 ```
@@ -338,7 +338,7 @@ p2<-ggplot(result_df, aes(x = time, y = surv, color = race_ethnicity)) +
 p2
 
 # ggsave(
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/Unweighted KM Curves by Algorithm and Race 12-12.png",
+#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve_stratified_race_ethnicity.png",
 #   plot = p2,
 #   bg = "white")
 ```
