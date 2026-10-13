@@ -976,7 +976,7 @@ print(combined_flow_table)
 
 # write.csv(
 #   combined_flow_table,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/combined_flow_table.csv",
+#   file = "anonymized",
 #   row.names = FALSE
 # )
 

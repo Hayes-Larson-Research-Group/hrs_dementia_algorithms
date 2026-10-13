@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "16_sensitivity_2016_apoe_cox_model"
 output: html_document
 date: "2026-05-04"
 ---
@@ -57,7 +57,7 @@ dt_analysis_age70<-dt_analysis_age70%>%
 
 
 ```{r}
-source(here::here("function_jl.R"))
+source(here::here("function.R"))
 #Split the data by each algorithm
 #convert variable type to factor
 #apply the factor function after stratifying by algorithm, because of the race_ethnicity variable
@@ -205,7 +205,7 @@ for (i in seq_along(model_formulas)) {
 }
 
 
-output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
+output_dir <- "anonymized"
 
 
 write_excel_csv(cox_results,
@@ -219,10 +219,10 @@ write_excel_csv(cox_results,
 # load dataset
 ```{r}
 # use weighted result to create plot
-weighted_main_result <- read.csv("D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_cox_results_censor_2016.csv")
+weighted_main_result <- read.csv("anonymized")
 
 weighted_apoe_result <- read_csv(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/cox_results_w_unw_apoe_variable_sens_2016.csv")
+  "anonymized")
 ```
 
 
@@ -299,57 +299,8 @@ df_hr<-bind_rows(df_long,weighted_apoe_result_filter)
 ```{r}
 write.csv(
   df_hr,
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/df_hr_main_and_apoe_variable_sens_2016.csv",
+  "anonymized",
   row.names = FALSE
 )
-```
-
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
 ```
 

@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "5_incident_rate"
 output: html_document
 date: "2025-12-09"
 ---
@@ -606,7 +606,7 @@ all_age_spec_wide <- imap(lst, function(df, nm) {
 
 # write.csv(
 #   all_age_spec_wide,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/age_spec.csv",
+#   "anonymized",
 #   row.names = FALSE
 # )
 ```
@@ -630,7 +630,7 @@ all_age_adj_wide <- imap(lst_adj, function(df, nm) {
 
 # write.csv(
 #   all_age_adj_wide,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/age_adj.csv",
+#   "anonymized",
 #   row.names = FALSE
 # )
 ```
@@ -654,7 +654,7 @@ all_weighted_age_spec_wide <- imap(lst_wt_spec, function(df, nm) {
 
 # write.csv(
 #   all_weighted_age_spec_wide,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_age_spec.csv",
+#   "anonymized",
 #   row.names = FALSE
 # )
 ```
@@ -680,7 +680,7 @@ all_weighted_age_adj_wide <- imap(lst_wt_adj, function(df, nm) {
 
 # write.csv(
 #   all_weighted_age_adj_wide,
-#   "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/weighted_age_adj.csv",
+#   "anonymized",
 #   row.names = FALSE
 # )
 ```

@@ -1,5 +1,5 @@
 # Data construction for dementia algorithms
-# Created by: Gina Nam
+# Created by: GN
 # Date: 11/23/2025
 # Update log:
 # 12/11/2025: perform a complete-case analysis
@@ -833,7 +833,7 @@ dt_analysis_age70_3cat <- dt_analysis_age70 %>%
 
 # Save merged files ----
 
-save_path <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Data"
+save_path <- "anonymized"
 
 # saveRDS(analysis_ready,      file = file.path(save_path, "dt_before_eligibility.rds"))
 # saveRDS(dt_tab1_age50,       file = file.path(save_path, "dt_tab1_age50.rds"))
@@ -1000,7 +1000,7 @@ tbl_eventtype_age70 <- dt_analysis_age70 %>%
 tbl_eventtype_age70
 
 ## Save each result ----
-# save_path_output <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output"
+# save_path_output <- "anonymized"
 # 
 # saveRDS(tbl_event_by_dem2010_main, file = file.path(save_path_output, "tbl_event_by_dem2010_age50.rds"))
 # saveRDS(tbl_event_by_dem2010_age70, file = file.path(save_path_output, "tbl_event_by_dem2010_age70.rds"))

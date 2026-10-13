@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "7_main_cox_model_overall_stratified"
 output: html_document
 date: "2025-12-09"
 ---
@@ -30,7 +30,7 @@ dt_analysis_age70 <- readRDS(here(
   "dt_analysis_age70.rds"
 ))
 
-source(here::here("function_jl.R"))
+source(here::here("function.R"))
 #Split the data by each algorithm
 #convert variable type to factor
 #apply the factor function after stratifying by algorithm, because of the race_ethnicity variable
@@ -347,15 +347,6 @@ result_table_unadj_weighted   <- format_result_table(filtered_unadj_weighted, ri
 unw_result <- bind_rows(result_table_adj_unweighted, result_table_unadj_unweighted)
 w_result   <- bind_rows(result_table_adj_weighted, result_table_unadj_weighted)
 
-
-# output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
-# 
-# 
-# write_excel_csv(unw_result,
-#                 file = file.path(output_dir, "cox_results.csv"))
-# 
-# write_excel_csv(w_result,
-#                 file = file.path(output_dir, "weighted_cox_results.csv"))
 ```
 
 
@@ -585,40 +576,5 @@ result_table_stratified_unweighted <- format_result_table_by_race(
   risk_factor_info_stratified
 )
 
-
-# output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
-# write_excel_csv(result_table_stratified_unweighted,
-#                 file = file.path(output_dir, "cox_results_stratified_by_race_ethnicity.csv"))
-# 
-# write_excel_csv(result_table_stratified_weighted,
-#                 file = file.path(output_dir, "weighted_cox_results_stratified_by_race_ethnicity.csv"))
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
 ```
 

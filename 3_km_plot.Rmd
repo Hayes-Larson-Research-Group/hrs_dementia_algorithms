@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "3_km_plot"
 output: html_document
 date: "2025-08-14"
 ---
@@ -30,7 +30,7 @@ dt_analysis_age70 <- readRDS(here(
   "dt_analysis_age70.rds"
 ))
 
-source(here::here("function_jl.R"))
+source(here::here("function.R"))
 #convert variable type to factor
 #When creating the plot, the algorithm variable needs to be a factor
 dt_analysis_age70_f <- dt_analysis_age70 %>%
@@ -99,7 +99,7 @@ ggsave(
 )
 
 # ggsave(
-#   filename = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Manuscript/figures for manuscript/Figure 1 weighted km plot.pdf",
+#   filename = "anonymized,
 #   plot = p,
 #   width = 8,
 #   height = 6,
@@ -132,7 +132,7 @@ km_plot_70plus<-ggsurvplot(
 km_plot_70plus
 
 ggsave(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve.png",
+  "anonymized",
   plot = km_plot_70plus$plot,
   bg = "white")
 ```
@@ -153,18 +153,5 @@ result_df_unweighted$algorithm <- gsub("algorithm_f=", "", result_df_unweighted$
 results_70plus <- df_fit_svy %>%
   full_join(result_df_unweighted, by = c("time", "algorithm"))%>%
   mutate(unweighted_surv = replace_na(unweighted_surv, 1))
-```
-
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
 ```
 

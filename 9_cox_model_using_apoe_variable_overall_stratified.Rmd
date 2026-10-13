@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "9_cox_model_using_apoe_variable_overall_stratified"
 output: html_document
 date: "2026-03-16"
 ---
@@ -55,7 +55,7 @@ dt_analysis_age70<-dt_analysis_age70%>%
 
 
 ```{r}
-source(here::here("function_jl.R"))
+source(here::here("function.R"))
 #Split the data by each algorithm
 #convert variable type to factor
 #apply the factor function after stratifying by algorithm, because of the race_ethnicity variable
@@ -201,14 +201,6 @@ for (i in seq_along(model_formulas)) {
     )
   }
 }
-
-
-# output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
-# 
-# 
-# write_excel_csv(cox_results,
-#                 file = file.path(output_dir, "cox_results_w_unw_apoe_variable.csv"))
-
 ```
 
 
@@ -353,19 +345,4 @@ for (model_name in names(model_formulas)) {
   }
 }
 ```
-
-
-
-
-```{r}
-# output_dir <- "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/"
-# write_excel_csv(cox_results,
-#                 file = file.path(output_dir, "cox_results_w_unw_stratified_by_race_ethnicity_apoe_variable.csv"))
-
-```
-
-
-```{r}
-```
-
 

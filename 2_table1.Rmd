@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "2_Table1"
 output: html_document
 date: "2025-12-08"
 ---
@@ -43,7 +43,7 @@ dt_tab1_age70 <- readRDS(here(
 ## Variable preparation
 ```{r}
 #load function to factor variables
-source(here::here("function_jl.R"))
+source(here::here("function.R"))
 
 #convert variable type to factor
 dt_tab1_age70_f <- dt_tab1_age70 %>%
@@ -917,7 +917,7 @@ merged_table_binary
 
 # gtsave(
 #   merged_table_binary %>% as_gt,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_binary_apoe.html")
+#   file = "anonymized")
 
 
 merged_table_three <- tbl_merge(
@@ -928,7 +928,7 @@ merged_table_three
 
 # gtsave(
 #   merged_table_three %>% as_gt,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_three_apoe.html")
+#   file = "anonymized")
 
 #-------
 
@@ -943,7 +943,7 @@ merged_table_svy_binary
 
 # gtsave(
 #   merged_table_svy_binary %>% as_gt,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_svy_binary_apoe.html")
+#   file = "anonymized")
 
 
 merged_table_svy_three <- tbl_merge(
@@ -956,7 +956,7 @@ merged_table_svy_three
 
 # gtsave(
 #   merged_table_svy_three %>% as_gt,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_svy_three_apoe.html")
+#   file = "anonymized")
 
 #------
 
@@ -970,7 +970,7 @@ merged_table_no_dem_binary
 
 # gtsave(
 #   merged_table_no_dem_binary %>% as_gt,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_no_dem_binary_apoe.html")
+#   file = "anonymized")
 
 
 merged_table_no_dem_three <- tbl_merge(
@@ -982,7 +982,7 @@ merged_table_no_dem_three
 
 # gtsave(
 #   merged_table_no_dem_three %>% as_gt,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_no_dem_three_apoe.html")
+#   file = "anonymized")
 
 #-------
 
@@ -996,7 +996,7 @@ merged_table_svy_no_dem_binary
 
 # gtsave(
 #   merged_table_svy_no_dem_binary %>% as_gt,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_svy_no_dem_binary_apoe.html")
+#   file = "anonymized")
 
 
 merged_table_svy_no_dem_three <- tbl_merge(
@@ -1008,36 +1008,5 @@ merged_table_svy_no_dem_three
 
 # gtsave(
 #   merged_table_svy_no_dem_three %>% as_gt,
-#   file = "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/Output/merged_table_svy_no_dem_three_apoe.html")
+#   file = "anonymized")
 ```
-
-
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
-
-```{r}
-```
-
