@@ -1,9 +1,7 @@
 # hrs_dementia_algorithms
 This repository holds code for the the project titled: "Classification Matters: Divergent Estimates of Dementia Risk Factors in the Health and Retirement Study" 
 
-* **0_paths_jl.R** : Sets the working path references across the project. This script is to help code reviewers to easily run subsequent scripts without manually editing file locations. 
-
-* **function_jl.R** : Reusable utility functions.
+* **function.R** : Reusable utility functions.
 
 * **1_data_construction.R** : Constructing analysis-ready datasets for each dementia classification algorithm. Baseline covariates were obtained from RAND longitudinal file and Tracker file and merged into dementia algorithm datasets. 
 
@@ -23,9 +21,9 @@ This repository holds code for the the project titled: "Classification Matters: 
 
 * **9_cox_model_using_apoe_variable_overall_stratified.Rmd** : In the 70+ APOE subsample, fits Cox models with APOE for each algorithm (Langa, Wu, Expert, Hudomiet), using both weighted and unweighted data. Each algorithm gets two models—an APOE + age model and a fully adjusted model—and the same analysis is then repeated stratified by race/ethnicity.
 
-* **10_forest_plot_hr_jl.Rmd** : Builds HR forest plots from the weighted Cox results. Combines the main risk-factor HRs with the APOE-ε4 HR into a single figure, produces a sensitivity-analysis version restricted to the APOE subsample, and produces a race/ethnicity-stratified forest plot faceted by race.
+* **10_forest_plot_hr.Rmd** : Builds HR forest plots from the weighted Cox results. Combines the main risk-factor HRs with the APOE-ε4 HR into a single figure, produces a sensitivity-analysis version restricted to the APOE subsample, and produces a race/ethnicity-stratified forest plot faceted by race.
 
-* **11_forest_plot_ir_jl.Rmd** : Builds the age-specific incidence-rate figures from the IR output files. Produces an overall IR-by-age plot comparing the four algorithms, and a race/ethnicity-stratified version faceted by race.
+* **11_forest_plot_ir.Rmd** : Builds the age-specific incidence-rate figures from the IR output files. Produces an overall IR-by-age plot comparing the four algorithms, and a race/ethnicity-stratified version faceted by race.
 
 * **12_main_all_adjust_apoe_overall.Rmd** : analysis on the 70+ APOE subsample. Re-fits the main risk-factor Cox models for each algorithm (Langa, Wu, Expert, Hudomiet), weighted and unweighted, but with APOE added as a covariate to every model. Then reshapes the weighted results into long format for forest-plotting.
 
