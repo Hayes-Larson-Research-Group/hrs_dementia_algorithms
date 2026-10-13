@@ -93,7 +93,7 @@ p
 
 
 ggsave(
-  "D:/OneDrive - University of Southern California/R00/Manuscripts/HRS/Dementia algorithms/output/KM_Curve_weighted.png",
+  "anonymized",
   plot = p,
   bg = "white"
 )
